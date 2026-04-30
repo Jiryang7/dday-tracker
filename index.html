@@ -133,8 +133,8 @@ tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
 .dl-title-input{flex:1;border:1px solid #d8ddf0;border-radius:7px;padding:4px 10px;font-size:12px;color:#445;background:#f8f9fd;min-width:0;max-width:280px}
 .dl-title-input:focus{outline:none;border-color:#4f7df3;background:#fff}
 .dl-title-input::placeholder{color:#bbc}
-.chart-canvas-outer{position:relative;flex:1;min-height:0;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.07);overflow:hidden}
-.chart-canvas-inner{position:absolute;inset:16px 16px 8px 16px}
+.chart-canvas-outer{flex:1;min-height:0;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.07);overflow:hidden;display:flex;flex-direction:column;padding:14px 16px 8px}
+.chart-canvas-inner{flex:1;min-height:320px;position:relative}
 
 /* Full chart legend */
 .chart-legend-bar{background:#fff;border-top:1px solid #e8eaf4;padding:8px 20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
@@ -305,6 +305,7 @@ tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
       <div class="chart-canvas-outer">
         <div class="chart-canvas-inner">
           <canvas id="mainChart"></canvas>
+          <div id="chart-err" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#c00;font-size:12px;padding:20px;text-align:center;border-radius:8px;z-index:5"></div>
         </div>
       </div>
     </div>
@@ -466,10 +467,10 @@ function switchView(v){
   document.getElementById('vbtn-data').classList.toggle('active',v==='data');
   document.getElementById('vbtn-chart').classList.toggle('active',v==='chart');
   if(v==='chart'){
-    requestAnimationFrame(()=>{
+    setTimeout(()=>{
       updateMainChart();
-      requestAnimationFrame(()=>{if(mainChart)mainChart.resize();});
-    });
+      setTimeout(()=>{if(mainChart){mainChart.resize();mainChart.update('none');}},80);
+    },30);
   }
 }
 
@@ -647,8 +648,8 @@ function getZoomedLabels(){
 }
 
 function buildDatasets(metric,allLabels,skip,todayIdx){
-  return sessions
-    .filter(s=>visibleSessions.has(s.id))
+  const toShow=visibleSessions.size>0?sessions.filter(s=>visibleSessions.has(s.id)):sessions;
+  return toShow
     .map(s=>{
       const idx=sessions.indexOf(s);
       const data=allLabels.map(k=>{
@@ -682,7 +683,7 @@ function buildDatasets(metric,allLabels,skip,todayIdx){
 // ── Latest data D-day helper ──────────────────────────────────
 
 function getLatestDataIdx(metric,allLabels){
-  const visibleS=sessions.filter(s=>visibleSessions.has(s.id));
+  const visibleS=visibleSessions.size>0?sessions.filter(s=>visibleSessions.has(s.id)):sessions;
   for(let i=allLabels.length-1;i>=0;i--){
     const k=allLabels[i];
     const has=visibleS.some(s=>{
@@ -699,51 +700,48 @@ function getLatestDataIdx(metric,allLabels){
 const chartLinesPlugin={
   id:'chartLines',
   afterDatasetsDraw(chart,args,opts){
-    const{ctx,chartArea,scales}=chart;
-    const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
+    try{
+      const ca=chart.chartArea;
+      const sx=chart.scales&&chart.scales.x;
+      if(!ca||!sx||!opts)return;
+      const ctx=chart.ctx;
+      const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
 
-    // Latest data line — yellow solid
-    const lidx=opts.latestDataIdx;
-    if(lidx>=0&&lidx!==undefined){
-      const x=scales.x.getPixelForIndex(lidx);
-      if(x>=chartArea.left&&x<=chartArea.right){
-        ctx.save();
-        // subtle yellow fill to the right (unfilled area)
-        ctx.fillStyle='rgba(255,220,0,0.07)';
-        ctx.fillRect(x,chartArea.top,chartArea.right-x,chartArea.bottom-chartArea.top);
-        // yellow line
-        ctx.beginPath();
-        ctx.strokeStyle='#c8a000';
-        ctx.lineWidth=1.5;
-        ctx.setLineDash([]);
-        ctx.moveTo(x,chartArea.top);ctx.lineTo(x,chartArea.bottom);ctx.stroke();
-        // label
-        const dl=chart.data.labels[lidx];
-        ctx.fillStyle='#a07800';
-        ctx.font=`bold 9px ${font}`;
-        ctx.textAlign='center';ctx.textBaseline='bottom';
-        ctx.fillText(dl,x,chartArea.top-1);
-        ctx.restore();
+      const lidx=opts.latestDataIdx;
+      if(typeof lidx==='number'&&lidx>=0){
+        const x=sx.getPixelForIndex(lidx);
+        if(x>=ca.left&&x<=ca.right){
+          ctx.save();
+          ctx.fillStyle='rgba(255,220,0,0.07)';
+          ctx.fillRect(x,ca.top,ca.right-x,ca.bottom-ca.top);
+          ctx.beginPath();
+          ctx.strokeStyle='#c8a000';ctx.lineWidth=1.5;ctx.setLineDash([]);
+          ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+          ctx.fillStyle='#a07800';
+          ctx.font=`bold 9px ${font}`;
+          ctx.textAlign='center';ctx.textBaseline='bottom';
+          ctx.fillText(String(chart.data.labels[lidx]||''),x,ca.top-1);
+          ctx.restore();
+        }
       }
-    }
 
-    // Today line — orange dashed
-    const tidx=opts.todayIdx;
-    if(tidx>=0&&tidx!==undefined){
-      const x=scales.x.getPixelForIndex(tidx);
-      if(x>=chartArea.left&&x<=chartArea.right){
-        ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.setLineDash([8,4]);
-        ctx.moveTo(x,chartArea.top);ctx.lineTo(x,chartArea.bottom);ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle='#f97316';
-        ctx.font=`bold 10px ${font}`;
-        ctx.textAlign='center';ctx.textBaseline='bottom';
-        ctx.fillText('오늘',x,chartArea.top-1);
-        ctx.restore();
+      const tidx=opts.todayIdx;
+      if(typeof tidx==='number'&&tidx>=0){
+        const x=sx.getPixelForIndex(tidx);
+        if(x>=ca.left&&x<=ca.right){
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.setLineDash([8,4]);
+          ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle='#f97316';
+          ctx.font=`bold 10px ${font}`;
+          ctx.textAlign='center';ctx.textBaseline='bottom';
+          ctx.fillText('오늘',x,ca.top-1);
+          ctx.restore();
+        }
       }
-    }
+    }catch(e){}
   }
 };
 
@@ -771,11 +769,12 @@ function buildDatalabelsConfig(todayIdx){
 const whiteBgPlugin={
   id:'whiteBg',
   beforeDraw(c){
-    const ctx=c.ctx;ctx.save();
-    ctx.globalCompositeOperation='destination-over';
-    ctx.fillStyle='#ffffff';
-    ctx.fillRect(0,0,c.width,c.height);
-    ctx.restore();
+    try{
+      const ctx=c.ctx;ctx.save();
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(0,0,c.width,c.height);
+      ctx.restore();
+    }catch(e){}
   }
 };
 
@@ -806,7 +805,7 @@ function updateMiniChart(){
         backgroundColor:'rgba(20,22,46,0.9)',titleFont:{size:10},bodyFont:{size:10},padding:8,cornerRadius:6
       },
       datalabels:dlConf,
-      todayLine:{todayIdx},
+      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels)},
     },
     scales:{
       x:{grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},ticks:{font:{size:10},maxRotation:0,minRotation:0,autoSkip:false,callback:(_,i)=>displayLabels[i]||'',color:'#889'}},
@@ -814,18 +813,21 @@ function updateMiniChart(){
     }
   };
 
-  if(miniChart){
-    miniChart.data.labels=allLabels;miniChart.data.datasets=datasets;
-    miniChart.options.plugins.datalabels=dlConf;
-    miniChart.options.plugins.todayLine={todayIdx};
-    miniChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
-    miniChart.update('none');
-  }else{
-    miniChart=new Chart(document.getElementById('miniChart'),{
-      type:'line',data:{labels:allLabels,datasets},
-      plugins:[whiteBgPlugin,todayLinePlugin],options:opts
-    });
-  }
+  const latestIdx=getLatestDataIdx(metric,allLabels);
+  try{
+    if(miniChart){
+      miniChart.data.labels=allLabels;miniChart.data.datasets=datasets;
+      miniChart.options.plugins.datalabels=dlConf;
+      miniChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx};
+      miniChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
+      miniChart.update('none');
+    }else{
+      miniChart=new Chart(document.getElementById('miniChart'),{
+        type:'line',data:{labels:allLabels,datasets},
+        plugins:[whiteBgPlugin,chartLinesPlugin],options:opts
+      });
+    }
+  }catch(e){console.error('miniChart error:',e);}
 }
 
 // ── Chart: main (chart view) ───────────────────────────────────
@@ -862,7 +864,7 @@ function updateMainChart(){
         padding:12,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10
       },
       datalabels:dlConf,
-      todayLine:{todayIdx},
+      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels)},
     },
     scales:{
       x:{
@@ -877,17 +879,27 @@ function updateMainChart(){
     }
   };
 
-  if(mainChart){
-    mainChart.data.labels=allLabels;mainChart.data.datasets=datasets;
-    mainChart.options.plugins.datalabels=dlConf;
-    mainChart.options.plugins.todayLine={todayIdx};
-    mainChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
-    mainChart.update('none');
-  }else{
-    mainChart=new Chart(document.getElementById('mainChart'),{
-      type:'line',data:{labels:allLabels,datasets},
-      plugins:[whiteBgPlugin,todayLinePlugin],options:opts
-    });
+  const latestIdx=getLatestDataIdx(metric,allLabels);
+  const errDiv=document.getElementById('chart-err');
+  try{
+    if(errDiv)errDiv.style.display='none';
+    if(mainChart){
+      mainChart.data.labels=allLabels;mainChart.data.datasets=datasets;
+      mainChart.options.plugins.datalabels=dlConf;
+      mainChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx};
+      mainChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
+      mainChart.update('none');
+    }else{
+      const canvas=document.getElementById('mainChart');
+      if(!canvas){throw new Error('canvas#mainChart not found');}
+      mainChart=new Chart(canvas,{
+        type:'line',data:{labels:allLabels,datasets},
+        plugins:[whiteBgPlugin,chartLinesPlugin],options:opts
+      });
+    }
+  }catch(e){
+    console.error('mainChart error:',e);
+    if(errDiv){errDiv.style.display='flex';errDiv.textContent='차트 오류: '+e.message;}
   }
 }
 
@@ -954,19 +966,54 @@ function toggleLabels(){
 // ── Download ──────────────────────────────────────────────────
 
 function buildDownloadCanvas(metric){
-  const title=document.getElementById('dl-title-input').value.trim()||`${metric} 누적달성 비교`;
+  const autoTitle=`${metric} · ${getAutoChartTitle()}`;
+  const title=document.getElementById('dl-title-input').value.trim()||autoTitle;
   const src=document.getElementById('mainChart');
   const W=src.width, H=src.height;
   const pad=20, titleH=52;
+  const visibleS=sessions.filter(s=>visibleSessions.has(s.id));
+  const legendH=visibleS.length>0?36:0;
+  const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
+
   const c=document.createElement('canvas');
-  c.width=W+pad*2; c.height=H+titleH+pad*2;
+  c.width=W+pad*2;
+  c.height=H+titleH+legendH+pad*2;
   const ctx=c.getContext('2d');
+
+  // white bg
   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);
+
+  // yellow title bar
   ctx.fillStyle='#ffe600';
   ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pad,pad,W,40,6);else ctx.rect(pad,pad,W,40);ctx.fill();
-  ctx.fillStyle='#1a1a2e';ctx.font='bold 16px "Apple SD Gothic Neo",Arial,sans-serif';
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(title,c.width/2,pad+20);
+  ctx.fillStyle='#1a1a2e';ctx.font=`bold 16px ${font}`;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(title,c.width/2,pad+20);
+
+  // chart
   ctx.drawImage(src,pad,pad+titleH);
+
+  // legend row
+  if(visibleS.length>0){
+    const ly=pad+titleH+H+8;
+    ctx.font=`600 13px ${font}`;
+    ctx.textBaseline='middle';
+    // measure total width for centering
+    const dotR=6, gap=10, itemGap=24;
+    const widths=visibleS.map(s=>dotR*2+gap+ctx.measureText(s.name).width);
+    const totalW=widths.reduce((a,b)=>a+b,0)+(visibleS.length-1)*itemGap;
+    let x=(c.width-totalW)/2;
+    visibleS.forEach((s,i)=>{
+      const colorIdx=sessions.indexOf(s);
+      const color=COLORS[colorIdx%COLORS.length];
+      ctx.fillStyle=color;
+      ctx.beginPath();ctx.arc(x+dotR,ly+legendH/2,dotR,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#1a1a2e';ctx.textAlign='left';
+      ctx.fillText(s.name,x+dotR*2+gap,ly+legendH/2);
+      x+=widths[i]+itemGap;
+    });
+  }
+
   return c;
 }
 
