@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D-day 누적 추이 트래커</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#eef0f6;color:#1a1a2e;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── Header ── */
+.header{background:linear-gradient(135deg,#1a1a2e 0%,#252848 100%);color:#fff;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 10px rgba(0,0,0,0.22)}
+.header h1{font-size:15px;font-weight:700;letter-spacing:-.2px}
+.header-right{display:flex;gap:5px;align-items:center}
+.btn{padding:5px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.18);font-size:11px;cursor:pointer;background:rgba(255,255,255,0.07);color:#dde4f5;transition:.15s;white-space:nowrap;font-weight:500}
+.btn:hover{background:rgba(255,255,255,0.16);color:#fff}
+.btn-primary{background:#4f7df3;border-color:#4f7df3;color:#fff}
+.btn-primary:hover{background:#3b6de0}
+.btn-danger{border-color:rgba(255,100,100,0.28);color:#ffb3b3}
+.btn-danger:hover{background:rgba(255,80,80,0.12)}
+.btn-bot{background:rgba(0,174,239,0.2);border-color:rgba(0,174,239,0.45);color:#7dd4f7}
+.btn-bot:hover{background:rgba(0,174,239,0.32)}
+
+/* ── Top Nav (session tabs + view toggle) ── */
+.top-nav{background:#fff;border-bottom:1px solid #e0e4f0;padding:0 16px;display:flex;align-items:stretch;justify-content:space-between;flex-shrink:0;min-height:42px}
+.session-tabs{display:flex;align-items:center;gap:4px;overflow-x:auto;flex:1;padding:6px 0}
+.tab{padding:4px 13px;border-radius:16px;border:1.5px solid #d0d6e8;font-size:12px;cursor:pointer;background:#fff;color:#666;transition:.15s;white-space:nowrap;font-weight:500}
+.tab:hover{border-color:#4f7df3;color:#4f7df3;background:#f0f5ff}
+.tab.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e;font-weight:700}
+.tab-add{padding:4px 9px;border-radius:16px;border:1.5px dashed #c0ccdd;font-size:12px;cursor:pointer;background:transparent;color:#9aabbd;transition:.15s;white-space:nowrap}
+.tab-add:hover{border-color:#4f7df3;color:#4f7df3}
+.view-toggle{display:flex;align-items:center;gap:0;border-left:1px solid #e8eaf4;margin-left:12px;padding-left:12px;flex-shrink:0}
+.view-btn{padding:5px 14px;border-radius:6px;border:none;font-size:12px;cursor:pointer;background:transparent;color:#778;font-weight:600;transition:.15s;white-space:nowrap}
+.view-btn.active{background:#1a1a2e;color:#fff;border-radius:6px}
+.view-btn:hover:not(.active){background:#f0f2f8;color:#1a1a2e}
+
+/* ── Views ── */
+.view{display:none;flex:1;overflow:hidden}
+.view.active{display:flex;flex-direction:column}
+
+/* ══════════════════════════════
+   DATA VIEW
+══════════════════════════════ */
+.data-layout{display:grid;grid-template-columns:50% 50%;flex:1;overflow:hidden}
+
+.left-panel{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #d4d9ea;background:#f4f6fb}
+.session-tools{background:#eef0f7;border-bottom:1px solid #dde1ef;padding:7px 12px;display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
+.session-tools label{font-size:11px;color:#778;font-weight:700}
+.session-tools input[type=text]{border:1px solid #d0d6e8;border-radius:7px;padding:4px 8px;font-size:12px;width:140px;background:#fff}
+.session-tools input[type=text]:focus{outline:none;border-color:#4f7df3}
+.session-tools input[type=date]{border:1px solid #d0d6e8;border-radius:7px;padding:4px 7px;font-size:12px;background:#fff;color:#1a1a2e}
+.session-tools input[type=date]:focus{outline:none;border-color:#4f7df3}
+.dday-badge{display:flex;align-items:center;gap:4px;background:#ffe900;border-radius:7px;padding:3px 10px;font-size:12px;font-weight:800;color:#5a3e00;white-space:nowrap}
+.dday-badge.past{background:#eee;color:#888}
+.btn-sm{padding:4px 9px;border-radius:7px;border:1px solid #d0d6e8;font-size:11px;cursor:pointer;background:#fff;color:#556;font-weight:500;transition:.12s}
+.btn-sm:hover{background:#edf2ff;border-color:#4f7df3;color:#4f7df3}
+
+/* Table */
+.table-wrapper{overflow:auto;flex:1}
+table{border-collapse:collapse;font-size:12px;min-width:100%}
+thead th{background:#1e2040;padding:7px 5px;text-align:center;border:1px solid #282d52;white-space:nowrap;font-weight:600;position:sticky;top:0;z-index:2;font-size:11px;color:#b0bcd8;letter-spacing:.3px}
+thead th:first-child{background:#141628;color:#7080a0;position:sticky;left:0;z-index:3;min-width:66px}
+tbody td{border:1px solid #eaecf5;text-align:center;padding:0}
+tbody tr:nth-child(even) td{background:#f8f9fd}
+tbody tr:nth-child(odd) td{background:#fff}
+tbody td.dday-cell{background:#eef0fa;padding:4px 7px;font-weight:700;color:#2a3060;position:sticky;left:0;z-index:1;border-right:2.5px solid #c8d0e8;font-size:11px;min-width:66px;letter-spacing:.5px}
+tbody tr:hover td{background:#e8eeff!important}
+tbody tr:hover td.dday-cell{background:#dde4ff!important}
+tbody tr.today-row td{background:#fffbd0!important}
+tbody tr.today-row td.dday-cell{background:#ffe900!important;color:#4a3000!important;font-size:12px}
+tbody tr.today-row:hover td{background:#fff8a0!important}
+tbody td input{width:60px;text-align:center;border:none;padding:4px 2px;font-size:12px;background:transparent;color:#1a1a2e;font-weight:500}
+tbody td input:focus{background:#d8eaff;outline:1.5px solid #4f7df3;border-radius:3px;color:#0d2ea8;font-weight:700}
+tbody td input::placeholder{color:#d0d4df}
+tbody td.has-value{background:#deeaff}
+tbody td.has-value input{color:#1740cc;font-weight:700}
+tbody tr.today-row td.has-value{background:#ffe060!important}
+tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
+
+/* Mini chart (data view right side) */
+.right-mini{display:flex;flex-direction:column;overflow:hidden;background:#fff}
+.mini-chart-header{padding:10px 14px 8px;border-bottom:1px solid #e4e8f2;flex-shrink:0}
+.mini-controls{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.ctrl-pill{display:flex;align-items:center;gap:5px;background:#f2f4fb;border-radius:8px;padding:4px 9px;border:1px solid #e2e6f2}
+.ctrl-pill label{font-size:11px;color:#778;font-weight:600;white-space:nowrap}
+.mini-controls select,.mini-controls input[type=number]{padding:3px 6px;border-radius:5px;border:1px solid #d0d6e8;font-size:11px;background:#fff;font-weight:500;color:#1a1a2e}
+.mini-chart-title{font-size:13px;font-weight:800;color:#1a1a2e;letter-spacing:-.3px}
+.mini-chart-area{padding:8px 12px;flex:1;overflow:hidden;display:flex;flex-direction:column;gap:6px}
+.mini-chart-container{position:relative;flex:1;min-height:0}
+.mini-legend{display:flex;flex-wrap:wrap;gap:4px;padding:2px 0}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:#556;font-weight:600;background:#f4f6fc;border-radius:10px;padding:2px 8px;border:1px solid #e4e8f4}
+.legend-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
+.mini-export-bar{background:#f2f4fb;border-top:1px solid #e0e4f0;padding:6px 12px;display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+
+/* ══════════════════════════════
+   CHART VIEW (full width)
+══════════════════════════════ */
+.chart-view-inner{display:flex;flex-direction:column;flex:1;overflow:hidden;background:#f8f9fd}
+
+.chart-topbar{background:#fff;border-bottom:1px solid #e0e4f0;padding:10px 20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.chart-topbar-left{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap}
+.chart-topbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+
+/* Zoom tabs */
+.zoom-tabs{display:flex;gap:0;border:1.5px solid #d0d6e8;border-radius:8px;overflow:hidden}
+.zoom-tab{padding:5px 13px;font-size:11px;cursor:pointer;background:#fff;border:none;color:#556;font-weight:600;transition:.12s;white-space:nowrap;border-right:1px solid #d0d6e8}
+.zoom-tab:last-child{border-right:none}
+.zoom-tab.active{background:#1a1a2e;color:#fff}
+.zoom-tab:hover:not(.active){background:#f0f3ff;color:#4f7df3}
+
+.ctrl-toggle{padding:5px 11px;border-radius:8px;border:1.5px solid #d0d6e8;font-size:11px;cursor:pointer;background:#fff;color:#556;font-weight:600;transition:.12s;white-space:nowrap}
+.ctrl-toggle.on{background:#1a1a2e;border-color:#1a1a2e;color:#fff}
+
+/* Today summary */
+.today-summary{display:none;align-items:center;gap:10px;background:linear-gradient(90deg,#fff9c0,#fffce8);border-bottom:1px solid #e8c800;padding:6px 20px;flex-wrap:wrap;flex-shrink:0}
+.today-summary.visible{display:flex}
+.today-sum-label{font-size:11px;font-weight:800;color:#8a6200;white-space:nowrap;margin-right:4px}
+.today-sum-item{font-size:11px;font-weight:500;color:#333;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.today-sum-item strong{font-weight:800;font-size:13px}
+
+/* Session selector bar */
+.session-selector-bar{background:#f4f6fc;border-bottom:1px solid #e0e4f0;padding:7px 20px;display:flex;align-items:center;gap:7px;flex-shrink:0;overflow-x:auto}
+.sess-toggle-label{font-size:12px;font-weight:700;color:#889;white-space:nowrap;margin-right:2px;flex-shrink:0}
+.sess-toggle{padding:4px 13px;border-radius:20px;border:1.5px solid #c8d0e8;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#778;transition:.15s;white-space:nowrap;font-family:inherit}
+.sess-toggle.on{background:#1a1a2e;border-color:#1a1a2e;color:#fff}
+.sess-toggle:hover:not(.on){background:#eef2ff;border-color:#4f7df3;color:#4f7df3}
+ 
+/* Chart canvas area */
+.chart-canvas-wrap{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:14px 20px 8px;gap:0;min-height:0}
+.chart-title-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0}
+.chart-main-title{font-size:22px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px}
+.dl-title-input{flex:1;border:1px solid #d8ddf0;border-radius:7px;padding:4px 10px;font-size:12px;color:#445;background:#f8f9fd;min-width:0;max-width:280px}
+.dl-title-input:focus{outline:none;border-color:#4f7df3;background:#fff}
+.dl-title-input::placeholder{color:#bbc}
+.chart-canvas-outer{position:relative;flex:1;min-height:0;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.07);overflow:hidden}
+.chart-canvas-inner{position:absolute;inset:16px 16px 8px 16px}
+
+/* Full chart legend */
+.chart-legend-bar{background:#fff;border-top:1px solid #e8eaf4;padding:8px 20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
+
+/* Export bar */
+.export-bar{background:#f0f2fa;border-top:1px solid #e0e4f0;padding:7px 20px;display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.export-bar-label{font-size:11px;color:#99a;font-weight:600;margin-right:1px}
+.export-sep{width:1px;height:13px;background:#d4d9e8;margin:0 3px;flex-shrink:0}
+.btn-dl{padding:4px 10px;border-radius:7px;border:1px solid #a8d4b8;font-size:11px;cursor:pointer;background:#edfaf3;color:#1a8c50;font-weight:600;transition:.12s;white-space:nowrap}
+.btn-dl:hover{background:#d4f0e2;border-color:#18a765}
+.btn-dl-gray{border-color:#c0c8da;background:#f2f4fb;color:#445}
+.btn-dl-gray:hover{background:#e4e8f4;border-color:#4f7df3;color:#4f7df3}
+.btn-dl-all{border-color:#ffc46a;background:#fff8ec;color:#b86a00}
+.btn-dl-all:hover{background:#ffe8c0;border-color:#e08000}
+.btn-dl-bot{border-color:#80c4f0;background:#eaf5ff;color:#0070c0;font-weight:700}
+.btn-dl-bot:hover{background:#cce8ff;border-color:#0070c0}
+
+/* ── Modals ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,30,0.6);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal-box{background:#fff;border-radius:14px;padding:24px;width:560px;max-width:93vw;box-shadow:0 12px 48px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto}
+.modal-box h2{font-size:15px;font-weight:800;color:#1a1a2e;margin-bottom:8px}
+.modal-desc{font-size:12px;color:#556;line-height:1.75;background:#f5f7fc;border-radius:8px;padding:10px 12px;border-left:3px solid #4f7df3;margin-bottom:12px}
+.modal-desc code{background:#e8edf8;border-radius:4px;padding:1px 5px;font-size:11px;font-family:monospace;color:#2244cc}
+.modal-desc a{color:#4f7df3;text-decoration:none}
+.modal-desc a:hover{text-decoration:underline}
+.modal-desc-warn{border-left-color:#f5a623;background:#fff8ec}
+.modal-textarea{width:100%;height:170px;border:1.5px solid #d0d6e8;border-radius:9px;padding:10px 12px;font-size:12px;font-family:monospace;resize:vertical;line-height:1.5;color:#1a1a2e}
+.modal-textarea:focus{outline:none;border-color:#4f7df3;box-shadow:0 0 0 3px rgba(79,125,243,0.12)}
+.modal-input{width:100%;border:1.5px solid #d0d6e8;border-radius:9px;padding:9px 12px;font-size:13px;color:#1a1a2e;margin-bottom:10px}
+.modal-input:focus{outline:none;border-color:#4f7df3;box-shadow:0 0 0 3px rgba(79,125,243,0.12)}
+.modal-input-label{font-size:12px;color:#556;font-weight:700;margin-bottom:5px;display:block}
+.modal-merge-row{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#556}
+.modal-footer{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+.modal-footer-btns{display:flex;gap:8px}
+.modal-btn{padding:7px 18px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid #d0d6e8;background:#fff;color:#556;font-weight:600}
+.modal-btn-primary{background:#4f7df3;border-color:#4f7df3;color:#fff}
+.modal-btn-primary:hover{background:#3b6de0}
+.modal-btn-teal{background:#0088cc;border-color:#0088cc;color:#fff}
+.modal-btn-teal:hover{background:#006faa}
+.modal-status{font-size:11px;color:#e05;min-height:16px;line-height:1.4}
+.modal-success{color:#1a8c50}
+
+/* ── Toast ── */
+.dl-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 24px;border-radius:24px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.dl-toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <h1>📊 D-day 누적 추이 트래커</h1>
+  <div class="header-right">
+    <button class="btn btn-danger" onclick="deleteSession()">세션 삭제</button>
+    <button class="btn" onclick="openPasteModal()">📋 붙여넣기</button>
+    <button class="btn btn-bot" onclick="openBotModal()">🤖 봇 설정</button>
+    <button class="btn btn-primary" onclick="exportJSON()">JSON 저장</button>
+    <label class="btn" style="cursor:pointer">JSON 불러오기<input type="file" accept=".json" style="display:none" onchange="importJSON(event)"></label>
+  </div>
+</div>
+
+<!-- ── Top Nav ── -->
+<div class="top-nav">
+  <div class="session-tabs" id="session-tabs"></div>
+  <div class="view-toggle">
+    <button class="view-btn active" id="vbtn-data" onclick="switchView('data')">📋 데이터</button>
+    <button class="view-btn" id="vbtn-chart" onclick="switchView('chart')">📈 차트</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     DATA VIEW
+══════════════════════════════ -->
+<div class="view active" id="view-data">
+  <div class="data-layout">
+    <!-- Left: table -->
+    <div class="left-panel">
+      <div class="session-tools">
+        <label>개강명</label>
+        <input type="text" id="session-name-input" onchange="updateSessionName()" placeholder="세션 이름">
+        <label>개강일</label>
+        <input type="date" id="start-date-input" onchange="updateStartDate()">
+        <div class="dday-badge" id="dday-badge">–</div>
+        <button class="btn-sm" onclick="addSession()">＋ 개강 추가</button>
+      </div>
+      <div class="table-wrapper" id="table-wrapper"></div>
+    </div>
+
+    <!-- Right: mini chart -->
+    <div class="right-mini">
+      <div class="mini-chart-header">
+        <div class="mini-controls">
+          <div class="ctrl-pill">
+            <label>지표</label>
+            <select id="metric-select" onchange="updateCharts()"></select>
+          </div>
+          <div class="ctrl-pill">
+            <label>간격</label>
+            <select id="skip-select" onchange="updateCharts()">
+              <option value="1">1칸</option>
+              <option value="2">2칸</option>
+              <option value="3" selected>3칸</option>
+              <option value="5">5칸</option>
+            </select>
+          </div>
+          <button class="ctrl-toggle" id="label-btn" onclick="toggleLabels()">🔢 숫자</button>
+        </div>
+        <div class="mini-chart-title" id="mini-chart-title">합자 누적달성</div>
+      </div>
+      <div class="mini-chart-area">
+        <div class="mini-chart-container">
+          <canvas id="miniChart"></canvas>
+        </div>
+        <div class="mini-legend" id="mini-legend"></div>
+      </div>
+      <div class="mini-export-bar">
+        <button class="btn-sm" onclick="exportCSV()">CSV</button>
+        <button class="btn-sm" onclick="copyChartData()">클립보드</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     CHART VIEW (full width)
+══════════════════════════════ -->
+<div class="view" id="view-chart">
+  <div class="chart-view-inner">
+    <!-- Controls -->
+    <div class="chart-topbar">
+      <div class="chart-topbar-left">
+        <div class="ctrl-pill">
+          <label>지표</label>
+          <select id="metric-select2" onchange="updateCharts()"></select>
+        </div>
+        <div class="zoom-tabs">
+          <button class="zoom-tab active" id="zoom-full" onclick="setZoom('full')">전체</button>
+          <button class="zoom-tab" id="zoom-14" onclick="setZoom('week14')">오늘 ±2주</button>
+          <button class="zoom-tab" id="zoom-7" onclick="setZoom('week7')">오늘 ±1주</button>
+        </div>
+        <button class="ctrl-toggle" id="label-btn2" onclick="toggleLabels()">🔢 숫자</button>
+      </div>
+      <div class="chart-topbar-right">
+        <button class="btn-dl" onclick="downloadChart('png')">📥 PNG</button>
+        <button class="btn-dl btn-dl-gray" onclick="downloadChart('jpg')">📥 JPG</button>
+        <button class="btn-dl btn-dl-all" onclick="downloadAllMetrics()">📦 전체</button>
+        <button class="btn-dl btn-dl-bot" onclick="sendCurrentToBot()">✈️ 봇 전송</button>
+        <button class="btn-dl btn-dl-bot" onclick="sendFourToBot()" style="background:#d4edff;border-color:#4a90d9;color:#004a8c;font-weight:800">✈️ 4개 전송</button>
+      </div>
+    </div>
+
+    <!-- Session selector -->
+    <div class="session-selector-bar">
+      <span class="sess-toggle-label">개강 선택</span>
+      <div id="sess-toggles" style="display:flex;gap:6px;flex-wrap:nowrap"></div>
+    </div>
+
+    <!-- Today summary -->
+    <div class="today-summary" id="today-summary"></div>
+
+    <!-- Canvas area -->
+    <div class="chart-canvas-wrap">
+      <div class="chart-title-row">
+        <div class="chart-main-title" id="chart-main-title">합자 누적달성 비교</div>
+        <input type="text" class="dl-title-input" id="dl-title-input" placeholder="다운로드 제목 (비우면 자동)">
+      </div>
+      <div class="chart-canvas-outer">
+        <div class="chart-canvas-inner">
+          <canvas id="mainChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-legend-bar" id="chart-legend"></div>
+  </div>
+</div>
+
+<!-- ── Paste modal ── -->
+<div class="modal-overlay" id="paste-modal" onclick="if(event.target===this)closePasteModal()">
+  <div class="modal-box">
+    <h2>📋 구글시트 / 엑셀 데이터 붙여넣기</h2>
+    <div class="modal-desc">
+      구글시트나 엑셀에서 데이터 범위 선택 → <code>Ctrl+C</code> → 아래에 <code>Ctrl+V</code><br>
+      <strong>첫 행</strong>: 열 제목 (D-day, 찾기, 합자 … 순서 무관) &nbsp;|&nbsp; <strong>첫 열</strong>: D-day 번호
+    </div>
+    <textarea class="modal-textarea" id="paste-area" placeholder="여기에 붙여넣기 (Ctrl+V)…"></textarea>
+    <div class="modal-merge-row">
+      <input type="checkbox" id="merge-mode" checked>
+      <label for="merge-mode">기존 값 유지 (빈 셀만 채우기) — 해제 시 덮어쓰기</label>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-status" id="paste-status"></span>
+      <div class="modal-footer-btns">
+        <button class="modal-btn" onclick="closePasteModal()">취소</button>
+        <button class="modal-btn modal-btn-primary" onclick="importPastedData()">가져오기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bot modal ── -->
+<div class="modal-overlay" id="bot-modal" onclick="if(event.target===this)closeBotModal()">
+  <div class="modal-box">
+    <h2>🤖 Telegram 봇 직접 연결</h2>
+    <div class="modal-desc modal-desc-warn">
+      <strong>봇 토큰:</strong> <a href="https://t.me/BotFather" target="_blank">@BotFather</a> → <code>/mybots</code> → 봇 선택 → API Token<br>
+      <strong>Chat ID:</strong> <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> 에 아무 메시지 → 숫자 확인<br>
+      <strong>필수:</strong> 본인 봇에 <code>/start</code> 먼저 전송할 것
+    </div>
+    <span class="modal-input-label">봇 토큰</span>
+    <input class="modal-input" type="text" id="tg-token-input" placeholder="1234567890:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+    <span class="modal-input-label">Chat ID</span>
+    <input class="modal-input" type="text" id="tg-chatid-input" placeholder="119068613">
+    <div class="modal-footer">
+      <span class="modal-status" id="bot-status"></span>
+      <div class="modal-footer-btns">
+        <button class="modal-btn" onclick="closeBotModal()">닫기</button>
+        <button class="modal-btn modal-btn-primary" onclick="testDirectBot()">연결 테스트</button>
+        <button class="modal-btn modal-btn-teal" onclick="saveBotSettings()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dl-toast" id="dl-toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+Chart.register(ChartDataLabels);
+Chart.defaults.font.family = "'Pretendard Variable','Pretendard','Apple SD Gothic Neo',sans-serif";
+
+const METRICS = ['찾기','합자','육따기','영따기','복음방','센확'];
+const COLORS  = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#f97316','#be185d'];
+const DASHES  = [[],[],[],[],[],[]];
+
+let showDataLabels = false;
+let zoomMode = 'full';
+let currentView = 'data';
+let visibleSessions = new Set();
+
+// ── Data model ────────────────────────────────────────────────
+
+function emptyData(){
+  const d={};
+  for(let i=50;i>=1;i--){const k=`D-${i}`;d[k]={};METRICS.forEach(m=>d[k][m]='');}
+  return d;
+}
+
+let sessions=[
+  {id:1,name:'2월 개강 (2/28)',startDate:'2026-02-28',data:emptyData()},
+  {id:2,name:'3월 개강 (3/30)',startDate:'2026-03-30',data:emptyData()},
+  {id:3,name:'4월 개강 (4/30)',startDate:'2026-04-30',data:emptyData()},
+  {id:4,name:'5월 개강 (5/28)',startDate:'2026-05-28',data:emptyData()}
+];
+
+// Prefill — 2월
+fill(0,{
+  찾기:{50:0,49:0,48:0,47:0,46:2,45:5,44:11,43:15,42:24,41:30,40:64,39:84,38:94,37:104,36:119,35:140,34:154,33:158,32:177,31:187,30:207,29:223,28:251,27:251,26:264},
+  합자:{36:3,35:7,34:10,33:11,32:12,31:15,30:22,29:25,28:26,27:29,26:37},
+  육따기:{36:1,35:1,34:1,33:1,32:1,31:1,30:1,29:1,28:1,27:1,26:1}
+});
+// Prefill — 3월
+fill(1,{
+  찾기:{47:3,46:7,45:9,44:13,43:13,42:13,41:13,40:21,39:53,38:82,37:98,36:114,35:118,34:140,33:169,32:190,31:214,30:256,29:279,28:307,27:339,26:348},
+  합자:{46:4,45:6,44:8,43:8,42:8,41:8,40:16,39:43,38:69,37:81,36:100,35:100,34:119,33:141,32:153,31:176,30:193,29:209,28:231,27:251,26:268},
+  육따기:{39:2,38:3,37:3,36:3,35:4,34:6,33:6,32:10,31:13,30:13,29:17,28:22,27:31,26:36},
+  영따기:{39:2,38:3,37:3,36:3,35:4,34:4,33:4,32:7,31:7,30:7,29:8,28:9,27:9,26:10},
+  복음방:{38:1,37:1,36:1,35:1,34:1,33:1,32:1,31:1,30:1,29:1,28:1,27:1,26:1},
+  센확:{38:1,37:1,36:1,35:1,34:1,33:1,32:1,31:1,30:1,29:1,28:1,27:1,26:1}
+});
+// Prefill — 4월
+fill(2,{
+  합자:{47:10,46:10,45:31,44:54,43:103,42:127,41:187,40:215,39:229,38:251,37:263,36:270,35:282,34:288,33:288,32:305,31:308,30:355,29:405,28:450,27:501,26:534},
+  육따기:{40:4,39:4,38:6,37:8,36:13,35:19,34:23,33:25,32:29,31:32,30:34,29:43,28:63,27:83,26:100},
+  영따기:{40:4,39:4,38:4,37:4,36:4,35:4,34:4,33:5,32:5,31:5,30:5,29:6,28:7,27:7,26:8},
+  복음방:{40:4,39:4,38:4,37:4,36:4,35:4,34:4,33:4,32:4,31:4,30:4,29:4,28:4,27:4,26:4}
+});
+// Prefill — 5월
+fill(3,{
+  합자:{42:74,41:74,40:74,39:74,38:74,37:74,36:74,35:74,34:85,33:114,32:114,31:114,30:114},
+  육따기:{40:6,39:6,38:6,37:6,36:6,35:6,34:9,33:9,32:12,31:12,30:12},
+  영따기:{34:3,33:3,32:5,31:5,30:5}
+});
+
+function fill(idx,cols){
+  Object.entries(cols).forEach(([metric,map])=>{
+    Object.entries(map).forEach(([d,v])=>{sessions[idx].data[`D-${d}`][metric]=v;});
+  });
+}
+
+let activeId=sessions[0].id;
+let miniChart=null, mainChart=null;
+let nextId=5;
+
+function getActive(){return sessions.find(s=>s.id===activeId);}
+
+// ── D-day auto calculation ─────────────────────────────────────
+
+function calcTodayDday(session){
+  if(!session.startDate) return 0;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const start=new Date(session.startDate+'T00:00:00');
+  const diff=Math.round((start-today)/(1000*60*60*24));
+  return (diff>=1&&diff<=50)?diff:0;
+}
+
+function updateDdayBadge(){
+  const s=getActive();
+  const d=calcTodayDday(s);
+  const badge=document.getElementById('dday-badge');
+  if(d>0){badge.textContent=`오늘 D-${d}`;badge.className='dday-badge';}
+  else if(s.startDate){
+    const today=new Date();today.setHours(0,0,0,0);
+    const start=new Date(s.startDate+'T00:00:00');
+    const diff=Math.round((start-today)/(1000*60*60*24));
+    badge.textContent=diff<=0?'개강 완료':'D-day 범위 외';
+    badge.className='dday-badge past';
+  }else{badge.textContent='개강일 미설정';badge.className='dday-badge past';}
+}
+
+// ── View switching ─────────────────────────────────────────────
+
+function switchView(v){
+  currentView=v;
+  document.getElementById('view-data').classList.toggle('active',v==='data');
+  document.getElementById('view-chart').classList.toggle('active',v==='chart');
+  document.getElementById('vbtn-data').classList.toggle('active',v==='data');
+  document.getElementById('vbtn-chart').classList.toggle('active',v==='chart');
+  if(v==='chart'){
+    requestAnimationFrame(()=>{
+      updateMainChart();
+      requestAnimationFrame(()=>{if(mainChart)mainChart.resize();});
+    });
+  }
+}
+
+// ── Auto title ────────────────────────────────────────────────
+
+function getAutoChartTitle(){
+  const visible=sessions.filter(s=>visibleSessions.has(s.id));
+  if(visible.length===0)return'누적달성 현황';
+  const labels=visible.map(s=>{
+    const m=s.name.match(/(\d+)월/);
+    return m?m[1]+'월':s.name;
+  });
+  if(labels.length===1)return`${labels[0]} 누적달성 현황`;
+  return`${labels[0]} - ${labels[labels.length-1]} 누적달성 현황`;
+}
+
+// ── Session toggles (chart view) ──────────────────────────────
+
+function renderSessionToggles(){
+  const container=document.getElementById('sess-toggles');
+  if(!container)return;
+  container.innerHTML=sessions.map(s=>`
+    <button class="sess-toggle ${visibleSessions.has(s.id)?'on':''}"
+      onclick="toggleSessionVisibility(${s.id})">${s.name}</button>`).join('');
+}
+
+function toggleSessionVisibility(id){
+  if(visibleSessions.has(id)){
+    if(visibleSessions.size<=1)return; // keep at least one
+    visibleSessions.delete(id);
+  }else{
+    visibleSessions.add(id);
+  }
+  renderSessionToggles();
+  updateMainChart();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────
+
+function renderTabs(){
+  document.getElementById('session-tabs').innerHTML=
+    sessions.map(s=>`<button class="tab ${s.id===activeId?'active':''}" onclick="switchSession(${s.id})">${s.name}</button>`).join('')+
+    `<button class="tab-add" onclick="addSession()">＋</button>`;
+  // ensure new sessions appear in visibleSessions
+  sessions.forEach(s=>{if(!visibleSessions.has(s.id))visibleSessions.add(s.id);});
+  // remove stale ids
+  for(const id of visibleSessions){if(!sessions.find(s=>s.id===id))visibleSessions.delete(id);}
+  renderSessionToggles();
+  syncMetricSelects();
+}
+
+function syncMetricSelects(){
+  ['metric-select','metric-select2'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(!sel)return;
+    const cur=sel.value;
+    sel.innerHTML=METRICS.map(m=>`<option value="${m}"${m===cur||(!cur&&m==='합자')?'selected':''}>${m}</option>`).join('');
+  });
+}
+
+// ── Session ops ────────────────────────────────────────────────
+
+function switchSession(id){
+  activeId=id;
+  renderTabs();
+  renderTable();
+  updateDdayBadge();
+  document.getElementById('session-name-input').value=getActive().name;
+  document.getElementById('start-date-input').value=getActive().startDate||'';
+  updateCharts();
+}
+
+function addSession(){
+  const name=prompt('새 개강 이름:',`${nextId}월 개강`);
+  if(!name)return;
+  sessions.push({id:nextId,name,startDate:'',data:emptyData()});
+  activeId=nextId++;
+  renderTabs();renderTable();updateDdayBadge();updateCharts();saveData();
+}
+
+function deleteSession(){
+  if(sessions.length<=1){alert('최소 1개의 세션이 필요합니다.');return;}
+  if(!confirm(`"${getActive().name}" 세션을 삭제하시겠습니까?`))return;
+  sessions=sessions.filter(s=>s.id!==activeId);
+  activeId=sessions[0].id;
+  renderTabs();renderTable();updateDdayBadge();updateCharts();saveData();
+}
+
+function updateSessionName(){
+  getActive().name=document.getElementById('session-name-input').value;
+  renderTabs();saveData();
+}
+
+function updateStartDate(){
+  getActive().startDate=document.getElementById('start-date-input').value;
+  updateDdayBadge();
+  renderTable();
+  updateCharts();
+  saveData();
+}
+
+function updateData(key,metric,value){
+  const s=getActive();
+  if(!s.data[key])s.data[key]={};
+  s.data[key][metric]=value===''?'':Number(value);
+  event.target.closest('td').className=value!==''&&Number(value)!==0?'has-value':'';
+  saveData();updateCharts();
+}
+
+// ── Table ─────────────────────────────────────────────────────
+
+function renderTable(){
+  const s=getActive();
+  const todayD=calcTodayDday(s);
+  let html=`<table><thead><tr><th>D-day</th>${METRICS.map(m=>`<th>${m}</th>`).join('')}</tr></thead><tbody>`;
+  for(let d=50;d>=1;d--){
+    const k=`D-${d}`;
+    const isToday=(d===todayD);
+    html+=`<tr${isToday?' class="today-row"':''}><td class="dday-cell">${k}${isToday?' ▶':''}</td>`;
+    METRICS.forEach(m=>{
+      const v=s.data[k]?s.data[k][m]:'';
+      const cls=v!==''&&v!==0?'has-value':'';
+      html+=`<td class="${cls}"><input type="number" min="0" value="${v!==''?v:''}" placeholder="—"
+        onchange="updateData('${k}','${m}',this.value)"
+        onfocus="this.select()"
+        onkeydown="navCell(event,${d},'${m}')"></td>`;
+    });
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  document.getElementById('table-wrapper').innerHTML=html;
+  if(todayD){
+    setTimeout(()=>{
+      const tr=document.querySelector('#table-wrapper tbody tr.today-row');
+      if(tr)tr.scrollIntoView({block:'center',behavior:'smooth'});
+    },50);
+  }
+}
+
+function navCell(e,d,m){
+  if(e.key==='Enter'||e.key==='ArrowDown'){
+    e.preventDefault();
+    const idx=METRICS.indexOf(m);
+    const rows=document.querySelectorAll('#table-wrapper tbody tr');
+    const nextRowIdx=50-d+1;
+    if(nextRowIdx<rows.length){const inp=rows[nextRowIdx].querySelectorAll('input')[idx];if(inp)inp.focus();}
+  }
+}
+
+// ── Storage ───────────────────────────────────────────────────
+
+function saveData(){
+  try{localStorage.setItem('dday-v2',JSON.stringify({sessions,nextId,activeId}));}catch(e){}
+}
+
+// ── Chart helpers ─────────────────────────────────────────────
+
+function getMetric(){
+  return (document.getElementById('metric-select2')?.value||document.getElementById('metric-select')?.value)||'합자';
+}
+
+function getSkip(){return parseInt(document.getElementById('skip-select')?.value)||3;}
+
+function getZoomedLabels(){
+  const todayD=calcTodayDday(getActive());
+  let rangeStart=50, rangeEnd=1;
+  if(zoomMode!=='full'&&todayD>0){
+    const delta=zoomMode==='week7'?7:14;
+    rangeStart=Math.min(50,todayD+delta);
+    rangeEnd=Math.max(1,todayD-delta);
+  }
+  const labels=[];
+  for(let d=rangeStart;d>=rangeEnd;d--)labels.push(`D-${d}`);
+  return labels;
+}
+
+function buildDatasets(metric,allLabels,skip,todayIdx){
+  return sessions
+    .filter(s=>visibleSessions.has(s.id))
+    .map(s=>{
+      const idx=sessions.indexOf(s);
+      const data=allLabels.map(k=>{
+        const v=s.data[k]?s.data[k][metric]:'';
+        return v!==''?Number(v):null;
+      });
+      let lastIdx=-1;
+      for(let i=data.length-1;i>=0;i--){if(data[i]!==null){lastIdx=i;break;}}
+      return{
+        label:s.name, data,
+        borderColor:COLORS[idx%COLORS.length],
+        backgroundColor:COLORS[idx%COLORS.length]+'18',
+        borderWidth:2.8,
+        borderDash:DASHES[idx%DASHES.length],
+        tension:0.35,
+        pointRadius:data.map((v,i)=>{
+          if(v===null)return 0;
+          if(i===todayIdx)return 6;
+          return i%skip===0?3:0;
+        }),
+        pointBackgroundColor:data.map((v,i)=>i===todayIdx?COLORS[idx%COLORS.length]:'transparent'),
+        pointBorderColor:COLORS[idx%COLORS.length],
+        pointBorderWidth:data.map((v,i)=>i===todayIdx?2.5:1),
+        pointHoverRadius:7,
+        spanGaps:true, fill:false,
+        _todayIdx:todayIdx, _lastIdx:lastIdx, _skip:skip,
+      };
+    });
+}
+
+// ── Latest data D-day helper ──────────────────────────────────
+
+function getLatestDataIdx(metric,allLabels){
+  const visibleS=sessions.filter(s=>visibleSessions.has(s.id));
+  for(let i=allLabels.length-1;i>=0;i--){
+    const k=allLabels[i];
+    const has=visibleS.some(s=>{
+      const v=s.data[k]?s.data[k][metric]:'';
+      return v!==''&&v!==null&&v!==undefined;
+    });
+    if(has)return i;
+  }
+  return -1;
+}
+
+// ── Chart lines plugin (today + latest data) ──────────────────
+
+const chartLinesPlugin={
+  id:'chartLines',
+  afterDatasetsDraw(chart,args,opts){
+    const{ctx,chartArea,scales}=chart;
+    const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
+
+    // Latest data line — yellow solid
+    const lidx=opts.latestDataIdx;
+    if(lidx>=0&&lidx!==undefined){
+      const x=scales.x.getPixelForIndex(lidx);
+      if(x>=chartArea.left&&x<=chartArea.right){
+        ctx.save();
+        // subtle yellow fill to the right (unfilled area)
+        ctx.fillStyle='rgba(255,220,0,0.07)';
+        ctx.fillRect(x,chartArea.top,chartArea.right-x,chartArea.bottom-chartArea.top);
+        // yellow line
+        ctx.beginPath();
+        ctx.strokeStyle='#c8a000';
+        ctx.lineWidth=1.5;
+        ctx.setLineDash([]);
+        ctx.moveTo(x,chartArea.top);ctx.lineTo(x,chartArea.bottom);ctx.stroke();
+        // label
+        const dl=chart.data.labels[lidx];
+        ctx.fillStyle='#a07800';
+        ctx.font=`bold 9px ${font}`;
+        ctx.textAlign='center';ctx.textBaseline='bottom';
+        ctx.fillText(dl,x,chartArea.top-1);
+        ctx.restore();
+      }
+    }
+
+    // Today line — orange dashed
+    const tidx=opts.todayIdx;
+    if(tidx>=0&&tidx!==undefined){
+      const x=scales.x.getPixelForIndex(tidx);
+      if(x>=chartArea.left&&x<=chartArea.right){
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.setLineDash([8,4]);
+        ctx.moveTo(x,chartArea.top);ctx.lineTo(x,chartArea.bottom);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='#f97316';
+        ctx.font=`bold 10px ${font}`;
+        ctx.textAlign='center';ctx.textBaseline='bottom';
+        ctx.fillText('오늘',x,chartArea.top-1);
+        ctx.restore();
+      }
+    }
+  }
+};
+
+function buildDatalabelsConfig(todayIdx){
+  return{
+    display:(ctx)=>{
+      const i=ctx.dataIndex,v=ctx.dataset.data[i];
+      if(v===null||v===undefined)return false;
+      if(i===ctx.dataset._todayIdx)return true;
+      if(i===ctx.dataset._lastIdx&&!showDataLabels)return true;
+      if(!showDataLabels)return false;
+      return i%ctx.dataset._skip===0;
+    },
+    color:(ctx)=>ctx.dataIndex===ctx.dataset._todayIdx?'#fff':ctx.dataset.borderColor,
+    backgroundColor:(ctx)=>ctx.dataIndex===ctx.dataset._todayIdx?ctx.dataset.borderColor:null,
+    borderRadius:(ctx)=>ctx.dataIndex===ctx.dataset._todayIdx?5:2,
+    padding:(ctx)=>ctx.dataIndex===ctx.dataset._todayIdx?{top:3,bottom:3,left:6,right:6}:{top:1,bottom:1,left:2,right:2},
+    font:(ctx)=>({size:ctx.dataIndex===ctx.dataset._todayIdx?11:9,weight:ctx.dataIndex===ctx.dataset._todayIdx?'bold':'normal'}),
+    anchor:'end',align:'top',offset:3,
+    formatter:(v)=>v!==null?Math.round(v).toLocaleString():null,
+    clamp:true,
+  };
+}
+
+const whiteBgPlugin={
+  id:'whiteBg',
+  beforeDraw(c){
+    const ctx=c.ctx;ctx.save();
+    ctx.globalCompositeOperation='destination-over';
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,c.width,c.height);
+    ctx.restore();
+  }
+};
+
+// ── Chart: mini (data view) ────────────────────────────────────
+
+function updateMiniChart(){
+  const metric=document.getElementById('metric-select').value||'합자';
+  const skip=getSkip();
+  const allLabels=[];
+  for(let d=50;d>=1;d--)allLabels.push(`D-${d}`);
+  const displayLabels=allLabels.map((l,i)=>i%skip===0?l:'');
+  const todayD=calcTodayDday(getActive());
+  const todayIdx=todayD>0?allLabels.indexOf(`D-${todayD}`):-1;
+  const datasets=buildDatasets(metric,allLabels,skip,todayIdx);
+  const dlConf=buildDatalabelsConfig(todayIdx);
+
+  document.getElementById('mini-chart-title').textContent=`${metric} 누적달성`;
+  document.getElementById('mini-legend').innerHTML=sessions.map((s,i)=>`
+    <span class="legend-item"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>${s.name}</span>`).join('');
+
+  const opts={
+    responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y!==null?ctx.parsed.y.toLocaleString():'-'}`},
+        backgroundColor:'rgba(20,22,46,0.9)',titleFont:{size:10},bodyFont:{size:10},padding:8,cornerRadius:6
+      },
+      datalabels:dlConf,
+      todayLine:{todayIdx},
+    },
+    scales:{
+      x:{grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},ticks:{font:{size:10},maxRotation:0,minRotation:0,autoSkip:false,callback:(_,i)=>displayLabels[i]||'',color:'#889'}},
+      y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},callback:v=>v.toLocaleString(),color:'#889'},beginAtZero:true}
+    }
+  };
+
+  if(miniChart){
+    miniChart.data.labels=allLabels;miniChart.data.datasets=datasets;
+    miniChart.options.plugins.datalabels=dlConf;
+    miniChart.options.plugins.todayLine={todayIdx};
+    miniChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
+    miniChart.update('none');
+  }else{
+    miniChart=new Chart(document.getElementById('miniChart'),{
+      type:'line',data:{labels:allLabels,datasets},
+      plugins:[whiteBgPlugin,todayLinePlugin],options:opts
+    });
+  }
+}
+
+// ── Chart: main (chart view) ───────────────────────────────────
+
+function updateMainChart(){
+  const metric=document.getElementById('metric-select2').value||'합자';
+  const skip=getSkip();
+  const allLabels=getZoomedLabels();
+  const displayLabels=allLabels.map((l,i)=>i%skip===0?l:'');
+  const todayD=calcTodayDday(getActive());
+  const todayIdx=todayD>0?allLabels.indexOf(`D-${todayD}`):-1;
+  const datasets=buildDatasets(metric,allLabels,skip,todayIdx);
+  const dlConf=buildDatalabelsConfig(todayIdx);
+
+  const autoTitle=getAutoChartTitle();
+  document.getElementById('chart-main-title').textContent=`${metric} · ${autoTitle}`;
+  document.getElementById('dl-title-input').placeholder=`${metric} · ${autoTitle}`;
+  updateTodaySummary(metric,allLabels,todayD);
+
+  document.getElementById('chart-legend').innerHTML=sessions.filter(s=>visibleSessions.has(s.id)).map(s=>{
+    const i=sessions.indexOf(s);
+    return`<span class="legend-item"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>${s.name}</span>`;
+  }).join('');
+
+  const opts={
+    responsive:true,maintainAspectRatio:false,animation:{duration:250},
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y!==null?ctx.parsed.y.toLocaleString():'-'}`},
+        backgroundColor:'rgba(20,22,46,0.92)',
+        titleFont:{size:12,weight:'bold'},bodyFont:{size:12},
+        padding:12,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10
+      },
+      datalabels:dlConf,
+      todayLine:{todayIdx},
+    },
+    scales:{
+      x:{
+        grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},
+        ticks:{font:{size:13,weight:'600'},maxRotation:0,minRotation:0,autoSkip:false,callback:(_,i)=>displayLabels[i]||'',color:'#667'}
+      },
+      y:{
+        grid:{color:'rgba(0,0,0,0.05)',lineWidth:1},
+        ticks:{font:{size:13,weight:'500'},callback:v=>v.toLocaleString(),color:'#667'},
+        beginAtZero:true
+      }
+    }
+  };
+
+  if(mainChart){
+    mainChart.data.labels=allLabels;mainChart.data.datasets=datasets;
+    mainChart.options.plugins.datalabels=dlConf;
+    mainChart.options.plugins.todayLine={todayIdx};
+    mainChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
+    mainChart.update('none');
+  }else{
+    mainChart=new Chart(document.getElementById('mainChart'),{
+      type:'line',data:{labels:allLabels,datasets},
+      plugins:[whiteBgPlugin,todayLinePlugin],options:opts
+    });
+  }
+}
+
+function updateCharts(){
+  // sync metric selects
+  try{
+    const v1=document.getElementById('metric-select').value;
+    const v2=document.getElementById('metric-select2').value;
+    if(v1!==v2){
+      if(typeof event!=='undefined'&&event&&event.target&&event.target.id==='metric-select2'){
+        document.getElementById('metric-select').value=v2;
+      }else{
+        document.getElementById('metric-select2').value=v1;
+      }
+    }
+  }catch(e){}
+  updateMiniChart();
+  if(currentView==='chart')updateMainChart();
+}
+
+// ── Today summary ──────────────────────────────────────────────
+
+function updateTodaySummary(metric,allLabels,todayD){
+  const el=document.getElementById('today-summary');
+  if(!todayD){el.classList.remove('visible');return;}
+  const k=`D-${todayD}`;
+  const items=sessions.filter(s=>visibleSessions.has(s.id)).map(s=>{
+    const idx=sessions.indexOf(s);
+    const v=s.data[k]?s.data[k][metric]:'';
+    const val=v!==''?Number(v).toLocaleString():'—';
+    return `<span class="today-sum-item"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${COLORS[idx%COLORS.length]};margin-right:3px"></span>${s.name} <strong>${val}</strong></span>`;
+  }).join('');
+  el.innerHTML=`<span class="today-sum-label">★ D-${todayD} 오늘 현황 · ${metric}</span>${items}`;
+  el.classList.add('visible');
+}
+
+// ── Zoom ──────────────────────────────────────────────────────
+
+function setZoom(mode){
+  zoomMode=mode;
+  ['full','week14','week7'].forEach(m=>{
+    document.getElementById('zoom-'+m.replace('week',''))?.classList.toggle('active',m===mode);
+  });
+  document.getElementById('zoom-full').classList.toggle('active',mode==='full');
+  document.getElementById('zoom-14').classList.toggle('active',mode==='week14');
+  document.getElementById('zoom-7').classList.toggle('active',mode==='week7');
+  updateMainChart();
+}
+
+// ── Label toggle ───────────────────────────────────────────────
+
+function toggleLabels(){
+  showDataLabels=!showDataLabels;
+  ['label-btn','label-btn2'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(!b)return;
+    b.textContent=showDataLabels?'🔢 숫자 OFF':'🔢 숫자';
+    b.classList.toggle('on',showDataLabels);
+  });
+  updateMiniChart();
+  if(currentView==='chart')updateMainChart();
+}
+
+// ── Download ──────────────────────────────────────────────────
+
+function buildDownloadCanvas(metric){
+  const title=document.getElementById('dl-title-input').value.trim()||`${metric} 누적달성 비교`;
+  const src=document.getElementById('mainChart');
+  const W=src.width, H=src.height;
+  const pad=20, titleH=52;
+  const c=document.createElement('canvas');
+  c.width=W+pad*2; c.height=H+titleH+pad*2;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle='#ffe600';
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pad,pad,W,40,6);else ctx.rect(pad,pad,W,40);ctx.fill();
+  ctx.fillStyle='#1a1a2e';ctx.font='bold 16px "Apple SD Gothic Neo",Arial,sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(title,c.width/2,pad+20);
+  ctx.drawImage(src,pad,pad+titleH);
+  return c;
+}
+
+async function downloadChart(fmt='png'){
+  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,600));}
+  const metric=document.getElementById('metric-select2').value||'합자';
+  const c=buildDownloadCanvas(metric);
+  const a=document.createElement('a');
+  a.href=c.toDataURL(fmt==='jpg'?'image/jpeg':'image/png',0.95);
+  a.download=`${metric}_누적추이_${new Date().toISOString().slice(0,10)}.${fmt}`;
+  a.click();
+}
+
+async function downloadAllMetrics(){
+  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,600));}
+  const sel=document.getElementById('metric-select2');
+  const original=sel.value;
+  const toast=document.getElementById('dl-toast');
+  for(let i=0;i<METRICS.length;i++){
+    const m=METRICS[i];
+    toast.textContent=`다운로드 중… ${m} (${i+1}/${METRICS.length})`;toast.classList.add('show');
+    sel.value=m;document.getElementById('metric-select').value=m;updateMainChart();
+    await new Promise(r=>setTimeout(r,500));
+    const a=document.createElement('a');
+    a.href=buildDownloadCanvas(m).toDataURL('image/png',0.95);a.download=`${m}_누적추이.png`;a.click();
+    await new Promise(r=>setTimeout(r,250));
+  }
+  sel.value=original;document.getElementById('metric-select').value=original;updateMainChart();
+  toast.textContent=`✅ ${METRICS.length}개 저장 완료!`;
+  setTimeout(()=>toast.classList.remove('show'),2500);
+}
+
+// ── Bot ───────────────────────────────────────────────────────
+
+function openBotModal(){
+  document.getElementById('tg-token-input').value=localStorage.getItem('tg-token')||'';
+  document.getElementById('tg-chatid-input').value=localStorage.getItem('tg-chat-id')||'';
+  document.getElementById('bot-status').textContent='';
+  document.getElementById('bot-modal').classList.add('open');
+}
+function closeBotModal(){document.getElementById('bot-modal').classList.remove('open');}
+
+function saveBotSettings(){
+  localStorage.setItem('tg-token',document.getElementById('tg-token-input').value.trim());
+  localStorage.setItem('tg-chat-id',document.getElementById('tg-chatid-input').value.trim());
+  const st=document.getElementById('bot-status');
+  st.className='modal-status modal-success';st.textContent='✅ 저장됨!';
+  setTimeout(()=>{st.textContent='';st.className='modal-status';},2000);
+}
+
+async function testDirectBot(){
+  const token=document.getElementById('tg-token-input').value.trim();
+  const chatId=document.getElementById('tg-chatid-input').value.trim();
+  if(!token||!chatId){document.getElementById('bot-status').textContent='⚠️ 토큰과 Chat ID를 입력해주세요.';return;}
+  const st=document.getElementById('bot-status');
+  st.textContent='테스트 전송 중…';st.className='modal-status';
+  try{
+    const fd=new FormData();fd.append('chat_id',chatId);fd.append('text','✅ D-day 트래커 봇 연결 성공!');
+    const res=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',body:fd});
+    const data=await res.json();
+    if(data.ok){st.className='modal-status modal-success';st.textContent='✅ 테스트 메시지 전송 성공!';}
+    else{st.textContent=`❌ 오류: ${data.description}`;}
+  }catch(e){st.textContent='❌ 연결 실패: '+e.message;}
+}
+
+async function sendCurrentToBot(){
+  const token=localStorage.getItem('tg-token');
+  const chatId=localStorage.getItem('tg-chat-id');
+  if(!token||!chatId){alert('봇 설정에서 토큰과 Chat ID를 먼저 저장해주세요.');openBotModal();return;}
+  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,600));}
+  const metric=document.getElementById('metric-select2').value||'합자';
+  const toast=document.getElementById('dl-toast');
+  toast.textContent=`${metric} 차트 전송 중…`;toast.classList.add('show');
+  const canvas=buildDownloadCanvas(metric);
+  canvas.toBlob(async blob=>{
+    const fd=new FormData();
+    fd.append('chat_id',chatId);
+    fd.append('photo',blob,`${metric}_누적추이.png`);
+    fd.append('caption',`📊 ${metric} 누적달성 비교\n세션: ${getActive().name}\n${new Date().toLocaleDateString('ko-KR')}`);
+    try{
+      const res=await fetch(`https://api.telegram.org/bot${token}/sendPhoto`,{method:'POST',body:fd});
+      const data=await res.json();
+      toast.textContent=data.ok?'✅ 봇 전송 완료!':'❌ 오류: '+data.description;
+    }catch(e){toast.textContent='❌ 전송 실패: '+e.message;}
+    setTimeout(()=>toast.classList.remove('show'),3000);
+  },'image/png');
+}
+
+async function sendFourToBot(){
+  const token=localStorage.getItem('tg-token');
+  const chatId=localStorage.getItem('tg-chat-id');
+  if(!token||!chatId){alert('봇 설정에서 토큰과 Chat ID를 먼저 저장해주세요.');openBotModal();return;}
+  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,600));}
+  const targetMetrics=['합자','육따기','영따기','복음방'];
+  const sel2=document.getElementById('metric-select2');
+  const sel1=document.getElementById('metric-select');
+  const originalMetric=sel2.value;
+  const toast=document.getElementById('dl-toast');
+  toast.textContent='4개 차트 준비 중…';toast.classList.add('show');
+  const blobs=[];
+  for(const metric of targetMetrics){
+    sel2.value=metric;sel1.value=metric;
+    updateMainChart();
+    await new Promise(r=>setTimeout(r,350));
+    const canvas=buildDownloadCanvas(metric);
+    const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+    blobs.push(blob);
+    toast.textContent=`준비 중… ${metric} (${blobs.length}/${targetMetrics.length})`;
+  }
+  sel2.value=originalMetric;sel1.value=originalMetric;updateMainChart();
+  toast.textContent='전송 중…';
+  const fd=new FormData();
+  fd.append('chat_id',chatId);
+  const mediaArr=blobs.map((blob,i)=>{
+    fd.append(`photo${i}`,blob,`${targetMetrics[i]}_누적추이.png`);
+    return{type:'photo',media:`attach://photo${i}`,caption:`📊 ${targetMetrics[i]} 누적달성 | ${getActive().name} | ${new Date().toLocaleDateString('ko-KR')}`};
+  });
+  fd.append('media',JSON.stringify(mediaArr));
+  try{
+    const res=await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`,{method:'POST',body:fd});
+    const data=await res.json();
+    toast.textContent=data.ok?'✅ 4개 전송 완료!':'❌ 오류: '+data.description;
+  }catch(e){toast.textContent='❌ 전송 실패: '+e.message;}
+  setTimeout(()=>toast.classList.remove('show'),3500);
+}
+
+// ── Paste import ──────────────────────────────────────────────
+
+function openPasteModal(){
+  document.getElementById('paste-modal').classList.add('open');
+  document.getElementById('paste-area').value='';
+  document.getElementById('paste-status').textContent='';
+  setTimeout(()=>document.getElementById('paste-area').focus(),50);
+}
+function closePasteModal(){document.getElementById('paste-modal').classList.remove('open');}
+
+function importPastedData(){
+  const raw=document.getElementById('paste-area').value.trim();
+  if(!raw){document.getElementById('paste-status').textContent='⚠️ 붙여넣어 주세요.';return;}
+  const sep=raw.includes('\t')?'\t':',';
+  const rows=raw.split(/\r?\n/).map(r=>r.split(sep).map(c=>c.trim().replace(/^["']|["']$/g,'')));
+  if(rows.length<2){document.getElementById('paste-status').textContent='⚠️ 행이 너무 적습니다.';return;}
+  let headers=[];
+  rows[0].forEach(cell=>{
+    if(/d[\-\s]?day\s+\S/i.test(cell)){
+      const rest=cell.replace(/d[\-\s]?day\s*/i,'');
+      headers.push('D-day');
+      rest.split(/[,，]\s*/).forEach(p=>{if(p.trim())headers.push(p.trim());});
+    }else{cell.split(/[,，]\s*/).forEach(p=>{if(p.trim())headers.push(p.trim());});}
+  });
+  let ddayCol=0;
+  for(let i=0;i<headers.length;i++){
+    const h=headers[i].toLowerCase().replace(/[-_\s]/g,'');
+    if(h===''||h==='dday'||h==='d'||/^\d+$/.test(headers[i])){ddayCol=i;break;}
+  }
+  const metricCols={};
+  headers.forEach((h,i)=>{
+    if(i===ddayCol)return;
+    const match=METRICS.find(m=>m===h||h.includes(m)||m.includes(h));
+    if(match&&!(match in metricCols))metricCols[match]=i;
+  });
+  if(Object.keys(metricCols).length===0){
+    document.getElementById('paste-status').textContent=`⚠️ 지표명 인식 불가. 헤더: [${headers.join(' | ')}]`;return;
+  }
+  const mergeMode=document.getElementById('merge-mode').checked;
+  const s=getActive();let count=0;
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];if(!row||!row[ddayCol])continue;
+    const dNum=parseInt(row[ddayCol].replace(/[^0-9]/g,''));
+    if(isNaN(dNum)||dNum<1||dNum>50)continue;
+    const k=`D-${dNum}`;if(!s.data[k])s.data[k]={};
+    Object.entries(metricCols).forEach(([metric,col])=>{
+      if(col>=row.length)return;
+      const val=row[col];if(val===''||val===undefined)return;
+      const num=Number(val.replace(/,/g,''));if(isNaN(num))return;
+      if(mergeMode&&s.data[k][metric]!==''&&s.data[k][metric]!==undefined)return;
+      s.data[k][metric]=num;count++;
+    });
+  }
+  if(count===0){document.getElementById('paste-status').textContent='⚠️ 인식된 셀이 없습니다.';return;}
+  closePasteModal();renderTable();updateCharts();saveData();
+  alert(`✅ ${count}개 셀 가져오기 완료! (지표: ${Object.keys(metricCols).join(', ')})`);
+}
+
+// ── Export ────────────────────────────────────────────────────
+
+function exportJSON(){
+  const blob=new Blob([JSON.stringify({sessions,nextId},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`dday-tracker-${new Date().toISOString().slice(0,10)}.json`;a.click();
+}
+function importJSON(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const p=JSON.parse(ev.target.result);
+      sessions=p.sessions;nextId=p.nextId||sessions.length+1;activeId=sessions[0].id;
+      init();saveData();alert('불러오기 완료!');
+    }catch(err){alert('파일 형식 오류: '+err.message);}
+  };
+  reader.readAsText(file);e.target.value='';
+}
+function exportCSV(){
+  const s=getActive();
+  const rows=[['D-day',...METRICS]];
+  for(let d=50;d>=1;d--){const k=`D-${d}`;rows.push([k,...METRICS.map(m=>s.data[k]?s.data[k][m]:'')]);}
+  const blob=new Blob(['﻿'+rows.map(r=>r.join(',')).join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`${s.name.replace(/\s/g,'_')}.csv`;a.click();
+}
+function copyChartData(){
+  const metric=getMetric();
+  const allLabels=[];for(let d=50;d>=1;d--)allLabels.push(`D-${d}`);
+  let text=`D-day\t${sessions.map(s=>s.name).join('\t')}\n`;
+  allLabels.forEach(k=>{text+=`${k}\t${sessions.map(s=>s.data[k]?s.data[k][metric]??'':'').join('\t')}\n`;});
+  navigator.clipboard.writeText(text).then(()=>alert('클립보드에 복사됨!'));
+}
+
+// ── Init ─────────────────────────────────────────────────────
+
+function init(){
+  // ensure startDate field for legacy data
+  sessions.forEach(s=>{if(!s.hasOwnProperty('startDate'))s.startDate='';});
+  // init visible sessions (all on by default)
+  visibleSessions=new Set(sessions.map(s=>s.id));
+  const s=getActive();
+  document.getElementById('session-name-input').value=s.name;
+  document.getElementById('start-date-input').value=s.startDate||'';
+  renderTabs();
+  renderTable();
+  updateDdayBadge();
+  updateMiniChart();
+}
+
+const saved=localStorage.getItem('dday-v2');
+if(saved){
+  try{const p=JSON.parse(saved);sessions=p.sessions;nextId=p.nextId||10;activeId=p.activeId||sessions[0].id;}catch(e){}
+}
+
+// Populate metric selects
+METRICS.forEach(m=>{
+  ['metric-select','metric-select2'].forEach(id=>{
+    const sel=document.getElementById(id);
+    const o=document.createElement('option');
+    o.value=o.textContent=m;
+    if(m==='합자')o.selected=true;
+    sel.appendChild(o);
+  });
+});
+
+init();
+</script>
+</body>
+</html>
