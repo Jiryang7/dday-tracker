@@ -277,6 +277,7 @@ tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
           <button class="zoom-tab" id="zoom-7" onclick="setZoom('week7')">오늘 ±1주</button>
         </div>
         <button class="ctrl-toggle" id="label-btn2" onclick="toggleLabels()">🔢 숫자</button>
+        <button class="ctrl-toggle" onclick="openDeadlineModal()">📌 마감선</button>
       </div>
       <div class="chart-topbar-right">
         <button class="btn-dl" onclick="downloadChart('png')">📥 PNG</button>
@@ -361,6 +362,23 @@ tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
   </div>
 </div>
 
+<!-- ── Deadline modal ── -->
+<div class="modal-overlay" id="deadline-modal" onclick="if(event.target===this)closeDeadlineModal()">
+  <div class="modal-box" style="max-width:480px">
+    <h2>📌 마감선 설정</h2>
+    <div class="modal-desc">차트에 세로 마감선을 표시합니다.<br>D-day 번호 · 라벨 · 색상을 설정하고 저장하세요.</div>
+    <div id="deadline-list" style="max-height:280px;overflow-y:auto;margin-bottom:10px"></div>
+    <button onclick="addDeadline()" style="width:100%;padding:8px;border:1.5px dashed #4f7df3;border-radius:8px;background:transparent;color:#4f7df3;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">＋ 마감선 추가</button>
+    <div class="modal-footer">
+      <span class="modal-status" id="deadline-status"></span>
+      <div class="modal-footer-btns">
+        <button class="modal-btn" onclick="closeDeadlineModal()">닫기</button>
+        <button class="modal-btn modal-btn-primary" onclick="saveDeadlineSettings()">저장 & 적용</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="dl-toast" id="dl-toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -377,6 +395,8 @@ let showDataLabels = false;
 let zoomMode = 'full';
 let currentView = 'data';
 let visibleSessions = new Set();
+let deadlines = [];
+let nextDeadlineId = 1;
 
 // ── Data model ────────────────────────────────────────────────
 
@@ -703,17 +723,52 @@ const chartLinesPlugin={
     try{
       const ca=chart.chartArea;
       const sx=chart.scales&&chart.scales.x;
-      if(!ca||!sx||!opts)return;
+      if(!ca||!sx)return;
+      const plugOpts=chart.options.plugins.chartLines||{};
       const ctx=chart.ctx;
       const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
+      const nLabels=chart.data.labels.length||1;
+      const colW=(ca.right-ca.left)/nLabels;
 
-      const lidx=opts.latestDataIdx;
+      // 마감선 (데이터 뒤에, latestData 앞에 먼저 그려서 겹침 방지)
+      const ddls=plugOpts.deadlines||[];
+      ddls.forEach(dl=>{
+        if(typeof dl.idx!=='number'||dl.idx<0)return;
+        const x=sx.getPixelForIndex(dl.idx);
+        if(x<ca.left||x>ca.right)return;
+        ctx.save();
+        const col=dl.color||'#666';
+        const bw=Math.max(10,colW*0.75);
+        ctx.globalAlpha=0.16;
+        ctx.fillStyle=col;
+        ctx.fillRect(x-bw/2,ca.top,bw,ca.bottom-ca.top);
+        ctx.globalAlpha=1;
+        ctx.beginPath();
+        ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([]);
+        ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+        // 라벨 박스
+        ctx.font=`bold 10px ${font}`;
+        const lw=ctx.measureText(dl.label).width+10;
+        const lh=18;
+        ctx.fillStyle=col;
+        ctx.beginPath();
+        if(ctx.roundRect)ctx.roundRect(x-lw/2,ca.top+4,lw,lh,3);
+        else ctx.rect(x-lw/2,ca.top+4,lw,lh);
+        ctx.fill();
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(dl.label,x,ca.top+4+lh/2);
+        ctx.restore();
+      });
+
+      // 최신 D-day: 노란 컬럼 밴드
+      const lidx=plugOpts.latestDataIdx;
       if(typeof lidx==='number'&&lidx>=0){
         const x=sx.getPixelForIndex(lidx);
         if(x>=ca.left&&x<=ca.right){
+          const bw=Math.max(10,colW*0.75);
           ctx.save();
-          ctx.fillStyle='rgba(255,220,0,0.07)';
-          ctx.fillRect(x,ca.top,ca.right-x,ca.bottom-ca.top);
+          ctx.fillStyle='rgba(255,215,0,0.22)';
+          ctx.fillRect(x-bw/2,ca.top,bw,ca.bottom-ca.top);
           ctx.beginPath();
           ctx.strokeStyle='#c8a000';ctx.lineWidth=1.5;ctx.setLineDash([]);
           ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
@@ -725,7 +780,8 @@ const chartLinesPlugin={
         }
       }
 
-      const tidx=opts.todayIdx;
+      // 오늘: 주황 점선
+      const tidx=plugOpts.todayIdx;
       if(typeof tidx==='number'&&tidx>=0){
         const x=sx.getPixelForIndex(tidx);
         if(x>=ca.left&&x<=ca.right){
@@ -805,7 +861,7 @@ function updateMiniChart(){
         backgroundColor:'rgba(20,22,46,0.9)',titleFont:{size:10},bodyFont:{size:10},padding:8,cornerRadius:6
       },
       datalabels:dlConf,
-      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels)},
+      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels),deadlines:deadlines.map(d=>({idx:allLabels.indexOf(`D-${d.dday}`),label:d.label,color:d.color})).filter(d=>d.idx>=0)},
     },
     scales:{
       x:{grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},ticks:{font:{size:10},maxRotation:0,minRotation:0,autoSkip:false,callback:(_,i)=>displayLabels[i]||'',color:'#889'}},
@@ -818,7 +874,7 @@ function updateMiniChart(){
     if(miniChart){
       miniChart.data.labels=allLabels;miniChart.data.datasets=datasets;
       miniChart.options.plugins.datalabels=dlConf;
-      miniChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx};
+      miniChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx,deadlines:deadlines.map(d=>({idx:allLabels.indexOf(`D-${d.dday}`),label:d.label,color:d.color})).filter(d=>d.idx>=0)};
       miniChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
       miniChart.update('none');
     }else{
@@ -864,7 +920,7 @@ function updateMainChart(){
         padding:12,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10
       },
       datalabels:dlConf,
-      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels)},
+      chartLines:{todayIdx,latestDataIdx:getLatestDataIdx(metric,allLabels),deadlines:deadlines.map(d=>({idx:allLabels.indexOf(`D-${d.dday}`),label:d.label,color:d.color})).filter(d=>d.idx>=0)},
     },
     scales:{
       x:{
@@ -886,7 +942,7 @@ function updateMainChart(){
     if(mainChart){
       mainChart.data.labels=allLabels;mainChart.data.datasets=datasets;
       mainChart.options.plugins.datalabels=dlConf;
-      mainChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx};
+      mainChart.options.plugins.chartLines={todayIdx,latestDataIdx:latestIdx,deadlines:deadlines.map(d=>({idx:allLabels.indexOf(`D-${d.dday}`),label:d.label,color:d.color})).filter(d=>d.idx>=0)};
       mainChart.options.scales.x.ticks.callback=(_,i)=>displayLabels[i]||'';
       mainChart.update('none');
     }else{
@@ -970,49 +1026,60 @@ function buildDownloadCanvas(metric){
   const title=document.getElementById('dl-title-input').value.trim()||autoTitle;
   const src=document.getElementById('mainChart');
   const W=src.width, H=src.height;
-  const pad=20, titleH=52;
-  const visibleS=sessions.filter(s=>visibleSessions.has(s.id));
-  const legendH=visibleS.length>0?36:0;
+  const pad=20;
   const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
+  const visibleS=visibleSessions.size>0?sessions.filter(s=>visibleSessions.has(s.id)):sessions;
+
+  const titleFontSize=28;
+  const legendFontSize=17;
+  const dotR=8, dotGap=11, itemGap=28;
+  const titleLineH=titleFontSize+20; // 48px
+  const legendLineH=visibleS.length>0?legendFontSize+18:0; // 35px
+  const barH=titleLineH+legendLineH+(visibleS.length>0?8:0);
+  const chartY=pad+barH+14;
 
   const c=document.createElement('canvas');
   c.width=W+pad*2;
-  c.height=H+titleH+legendH+pad*2;
+  c.height=chartY+H+pad;
   const ctx=c.getContext('2d');
 
   // white bg
   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);
 
-  // yellow title bar
+  // yellow header bar (title + legend)
   ctx.fillStyle='#ffe600';
-  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pad,pad,W,40,6);else ctx.rect(pad,pad,W,40);ctx.fill();
-  ctx.fillStyle='#1a1a2e';ctx.font=`bold 16px ${font}`;
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(pad,pad,W,barH,8);
+  else ctx.rect(pad,pad,W,barH);
+  ctx.fill();
+
+  // title text
+  ctx.fillStyle='#1a1a2e';
+  ctx.font=`bold ${titleFontSize}px ${font}`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(title,c.width/2,pad+20);
+  ctx.fillText(title,c.width/2,pad+titleLineH/2);
 
-  // chart
-  ctx.drawImage(src,pad,pad+titleH);
-
-  // legend row
+  // legend row (바로 아래, 노란 바 안)
   if(visibleS.length>0){
-    const ly=pad+titleH+H+8;
-    ctx.font=`600 13px ${font}`;
+    const ly=pad+titleLineH+(legendLineH/2)+4;
+    ctx.font=`600 ${legendFontSize}px ${font}`;
     ctx.textBaseline='middle';
-    // measure total width for centering
-    const dotR=6, gap=10, itemGap=24;
-    const widths=visibleS.map(s=>dotR*2+gap+ctx.measureText(s.name).width);
+    const widths=visibleS.map(s=>dotR*2+dotGap+ctx.measureText(s.name).width);
     const totalW=widths.reduce((a,b)=>a+b,0)+(visibleS.length-1)*itemGap;
     let x=(c.width-totalW)/2;
     visibleS.forEach((s,i)=>{
       const colorIdx=sessions.indexOf(s);
       const color=COLORS[colorIdx%COLORS.length];
       ctx.fillStyle=color;
-      ctx.beginPath();ctx.arc(x+dotR,ly+legendH/2,dotR,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(x+dotR,ly,dotR,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#1a1a2e';ctx.textAlign='left';
-      ctx.fillText(s.name,x+dotR*2+gap,ly+legendH/2);
+      ctx.fillText(s.name,x+dotR*2+dotGap,ly);
       x+=widths[i]+itemGap;
     });
   }
+
+  // chart image
+  ctx.drawImage(src,pad,chartY);
 
   return c;
 }
@@ -1233,6 +1300,70 @@ function copyChartData(){
   navigator.clipboard.writeText(text).then(()=>alert('클립보드에 복사됨!'));
 }
 
+// ── Deadlines ─────────────────────────────────────────────────
+
+function saveDeadlines(){
+  try{localStorage.setItem('dday-deadlines',JSON.stringify({deadlines,nextId:nextDeadlineId}));}catch(e){}
+}
+
+const DL_PRESET_COLORS=['#b45309','#1d4ed8','#15803d','#7c3aed','#be123c','#0e7490','#c2410c','#0369a1'];
+
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+function renderDeadlineList(){
+  const el=document.getElementById('deadline-list');
+  if(!el)return;
+  if(deadlines.length===0){
+    el.innerHTML='<div style="color:#99a;font-size:12px;padding:12px 0;text-align:center">아직 마감선이 없어요. 아래 버튼으로 추가하세요.</div>';
+    return;
+  }
+  el.innerHTML=deadlines.map(d=>`
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;background:#f5f7fc;border-radius:8px;padding:7px 10px;border:1px solid #e4e8f2">
+      <span style="font-size:12px;color:#556;font-weight:700;flex-shrink:0">D-</span>
+      <input type="number" min="1" max="50" value="${d.dday}"
+        style="width:52px;border:1px solid #d0d6e8;border-radius:5px;padding:4px 6px;font-size:13px;font-weight:700;text-align:center;background:#fff;font-family:inherit"
+        onchange="updateDeadlineProp(${d.id},'dday',parseInt(this.value)||1)">
+      <input type="text" value="${escHtml(d.label)}" placeholder="예: 4월 복음방 마감"
+        style="flex:1;border:1px solid #d0d6e8;border-radius:5px;padding:4px 8px;font-size:12px;background:#fff;font-family:inherit"
+        oninput="updateDeadlineProp(${d.id},'label',this.value)">
+      <input type="color" value="${d.color}"
+        style="width:32px;height:30px;border:1px solid #d0d6e8;border-radius:5px;padding:2px;cursor:pointer;background:#fff"
+        onchange="updateDeadlineProp(${d.id},'color',this.value)">
+      <button onclick="removeDeadline(${d.id})"
+        style="border:none;background:#fee2e2;color:#c00;border-radius:5px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;font-family:inherit">✕</button>
+    </div>`).join('');
+}
+
+function updateDeadlineProp(id,key,val){
+  const d=deadlines.find(x=>x.id===id);
+  if(d)d[key]=val;
+}
+
+function addDeadline(){
+  deadlines.push({id:nextDeadlineId++,dday:10,label:'마감',color:DL_PRESET_COLORS[deadlines.length%DL_PRESET_COLORS.length]});
+  renderDeadlineList();
+}
+
+function removeDeadline(id){
+  deadlines=deadlines.filter(d=>d.id!==id);
+  renderDeadlineList();
+}
+
+function openDeadlineModal(){
+  renderDeadlineList();
+  document.getElementById('deadline-status').textContent='';
+  document.getElementById('deadline-modal').classList.add('open');
+}
+
+function closeDeadlineModal(){document.getElementById('deadline-modal').classList.remove('open');}
+
+function saveDeadlineSettings(){
+  saveDeadlines();
+  if(currentView==='chart')updateMainChart();
+  updateMiniChart();
+  closeDeadlineModal();
+}
+
 // ── Init ─────────────────────────────────────────────────────
 
 function init(){
@@ -1252,6 +1383,10 @@ function init(){
 const saved=localStorage.getItem('dday-v2');
 if(saved){
   try{const p=JSON.parse(saved);sessions=p.sessions;nextId=p.nextId||10;activeId=p.activeId||sessions[0].id;}catch(e){}
+}
+const savedDL=localStorage.getItem('dday-deadlines');
+if(savedDL){
+  try{const p=JSON.parse(savedDL);deadlines=p.deadlines||[];nextDeadlineId=p.nextId||deadlines.length+1;}catch(e){}
 }
 
 // Populate metric selects
