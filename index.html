@@ -362,6 +362,22 @@ tbody tr.today-row td.has-value input{color:#5a3e00;font-weight:800}
   </div>
 </div>
 
+<!-- ── 4개 전송 메시지 모달 ── -->
+<div class="modal-overlay" id="send-msg-modal" onclick="if(event.target===this)document.getElementById('send-msg-modal').classList.remove('open')">
+  <div class="modal-box" style="max-width:500px">
+    <h2>✈️ 4개 차트 + 텍스트 전송</h2>
+    <div class="modal-desc">아래 텍스트를 확인·수정 후 전송하세요.<br>텍스트를 먼저 보내고 이어서 이미지 4장을 보냅니다.</div>
+    <textarea class="modal-textarea" id="send-msg-area" style="height:260px;font-size:13px;line-height:1.7"></textarea>
+    <div class="modal-footer">
+      <span class="modal-status" id="send-msg-status"></span>
+      <div class="modal-footer-btns">
+        <button class="modal-btn" onclick="document.getElementById('send-msg-modal').classList.remove('open')">취소</button>
+        <button class="modal-btn modal-btn-teal" onclick="confirmSendFour()">✈️ 전송</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Deadline modal ── -->
 <div class="modal-overlay" id="deadline-modal" onclick="if(event.target===this)closeDeadlineModal()">
   <div class="modal-box" style="max-width:480px">
@@ -667,11 +683,14 @@ function getZoomedLabels(){
   return labels;
 }
 
-function buildDatasets(metric,allLabels,skip,todayIdx){
+function buildDatasets(metric,allLabels,skip){
   const toShow=visibleSessions.size>0?sessions.filter(s=>visibleSessions.has(s.id)):sessions;
   return toShow
     .map(s=>{
       const idx=sessions.indexOf(s);
+      // 세션별 오늘 D-day 따로 계산
+      const sTodayD=calcTodayDday(s);
+      const sTodayIdx=sTodayD>0?allLabels.indexOf(`D-${sTodayD}`):-1;
       const data=allLabels.map(k=>{
         const v=s.data[k]?s.data[k][metric]:'';
         return v!==''?Number(v):null;
@@ -687,15 +706,15 @@ function buildDatasets(metric,allLabels,skip,todayIdx){
         tension:0.35,
         pointRadius:data.map((v,i)=>{
           if(v===null)return 0;
-          if(i===todayIdx)return 6;
+          if(i===sTodayIdx)return 6;
           return i%skip===0?3:0;
         }),
-        pointBackgroundColor:data.map((v,i)=>i===todayIdx?COLORS[idx%COLORS.length]:'transparent'),
+        pointBackgroundColor:data.map((v,i)=>i===sTodayIdx?COLORS[idx%COLORS.length]:'transparent'),
         pointBorderColor:COLORS[idx%COLORS.length],
-        pointBorderWidth:data.map((v,i)=>i===todayIdx?2.5:1),
+        pointBorderWidth:data.map((v,i)=>i===sTodayIdx?2.5:1),
         pointHoverRadius:7,
         spanGaps:true, fill:false,
-        _todayIdx:todayIdx, _lastIdx:lastIdx, _skip:skip,
+        _todayIdx:sTodayIdx, _lastIdx:lastIdx, _skip:skip,
       };
     });
 }
@@ -719,61 +738,64 @@ function getLatestDataIdx(metric,allLabels){
 
 const chartLinesPlugin={
   id:'chartLines',
-  afterDatasetsDraw(chart,args,opts){
+  afterDraw(chart){
     try{
       const ca=chart.chartArea;
       const sx=chart.scales&&chart.scales.x;
       if(!ca||!sx)return;
-      const plugOpts=chart.options.plugins.chartLines||{};
+      const P=chart.options.plugins&&chart.options.plugins.chartLines;
+      if(!P)return;
       const ctx=chart.ctx;
       const font='"Pretendard Variable","Apple SD Gothic Neo",Arial,sans-serif';
       const nLabels=chart.data.labels.length||1;
       const colW=(ca.right-ca.left)/nLabels;
 
-      // 마감선 (데이터 뒤에, latestData 앞에 먼저 그려서 겹침 방지)
-      const ddls=plugOpts.deadlines||[];
+      function xForIdx(i){return sx.getPixelForIndex?sx.getPixelForIndex(i):sx.getPixelForValue(i);}
+
+      // 마감선 — afterDraw로 모든 것 위에 그림
+      const ddls=Array.isArray(P.deadlines)?P.deadlines:[];
       ddls.forEach(dl=>{
         if(typeof dl.idx!=='number'||dl.idx<0)return;
-        const x=sx.getPixelForIndex(dl.idx);
-        if(x<ca.left||x>ca.right)return;
+        const x=xForIdx(dl.idx);
+        if(isNaN(x)||x<ca.left-1||x>ca.right+1)return;
+        const col=dl.color||'#888';
+        const bw=Math.max(8,colW*0.7);
         ctx.save();
-        const col=dl.color||'#666';
-        const bw=Math.max(10,colW*0.75);
-        ctx.globalAlpha=0.16;
-        ctx.fillStyle=col;
+        // 반투명 밴드
+        ctx.globalAlpha=0.18;ctx.fillStyle=col;
         ctx.fillRect(x-bw/2,ca.top,bw,ca.bottom-ca.top);
         ctx.globalAlpha=1;
-        ctx.beginPath();
-        ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([]);
-        ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+        // 실선
+        ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.setLineDash([]);
+        ctx.beginPath();ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
         // 라벨 박스
-        ctx.font=`bold 10px ${font}`;
-        const lw=ctx.measureText(dl.label).width+10;
-        const lh=18;
+        ctx.font=`bold 11px ${font}`;
+        const label=String(dl.label||'');
+        const lw=ctx.measureText(label).width+12;
+        const lh=20;
+        const lx=x-lw/2, ly=ca.top+5;
         ctx.fillStyle=col;
         ctx.beginPath();
-        if(ctx.roundRect)ctx.roundRect(x-lw/2,ca.top+4,lw,lh,3);
-        else ctx.rect(x-lw/2,ca.top+4,lw,lh);
+        if(ctx.roundRect)ctx.roundRect(lx,ly,lw,lh,4);
+        else ctx.rect(lx,ly,lw,lh);
         ctx.fill();
         ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText(dl.label,x,ca.top+4+lh/2);
+        ctx.fillText(label,x,ly+lh/2);
         ctx.restore();
       });
 
       // 최신 D-day: 노란 컬럼 밴드
-      const lidx=plugOpts.latestDataIdx;
+      const lidx=P.latestDataIdx;
       if(typeof lidx==='number'&&lidx>=0){
-        const x=sx.getPixelForIndex(lidx);
-        if(x>=ca.left&&x<=ca.right){
-          const bw=Math.max(10,colW*0.75);
+        const x=xForIdx(lidx);
+        if(!isNaN(x)&&x>=ca.left&&x<=ca.right){
+          const bw=Math.max(8,colW*0.7);
           ctx.save();
           ctx.fillStyle='rgba(255,215,0,0.22)';
           ctx.fillRect(x-bw/2,ca.top,bw,ca.bottom-ca.top);
-          ctx.beginPath();
           ctx.strokeStyle='#c8a000';ctx.lineWidth=1.5;ctx.setLineDash([]);
-          ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
-          ctx.fillStyle='#a07800';
-          ctx.font=`bold 9px ${font}`;
+          ctx.beginPath();ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+          ctx.fillStyle='#a07800';ctx.font=`bold 9px ${font}`;
           ctx.textAlign='center';ctx.textBaseline='bottom';
           ctx.fillText(String(chart.data.labels[lidx]||''),x,ca.top-1);
           ctx.restore();
@@ -781,23 +803,21 @@ const chartLinesPlugin={
       }
 
       // 오늘: 주황 점선
-      const tidx=plugOpts.todayIdx;
+      const tidx=P.todayIdx;
       if(typeof tidx==='number'&&tidx>=0){
-        const x=sx.getPixelForIndex(tidx);
-        if(x>=ca.left&&x<=ca.right){
+        const x=xForIdx(tidx);
+        if(!isNaN(x)&&x>=ca.left&&x<=ca.right){
           ctx.save();
-          ctx.beginPath();
           ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.setLineDash([8,4]);
-          ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(x,ca.top);ctx.lineTo(x,ca.bottom);ctx.stroke();
           ctx.setLineDash([]);
-          ctx.fillStyle='#f97316';
-          ctx.font=`bold 10px ${font}`;
+          ctx.fillStyle='#f97316';ctx.font=`bold 10px ${font}`;
           ctx.textAlign='center';ctx.textBaseline='bottom';
           ctx.fillText('오늘',x,ca.top-1);
           ctx.restore();
         }
       }
-    }catch(e){}
+    }catch(e){console.error('chartLinesPlugin error:',e);}
   }
 };
 
@@ -844,7 +864,7 @@ function updateMiniChart(){
   const displayLabels=allLabels.map((l,i)=>i%skip===0?l:'');
   const todayD=calcTodayDday(getActive());
   const todayIdx=todayD>0?allLabels.indexOf(`D-${todayD}`):-1;
-  const datasets=buildDatasets(metric,allLabels,skip,todayIdx);
+  const datasets=buildDatasets(metric,allLabels,skip);
   const dlConf=buildDatalabelsConfig(todayIdx);
 
   document.getElementById('mini-chart-title').textContent=`${metric} 누적달성`;
@@ -895,7 +915,7 @@ function updateMainChart(){
   const displayLabels=allLabels.map((l,i)=>i%skip===0?l:'');
   const todayD=calcTodayDday(getActive());
   const todayIdx=todayD>0?allLabels.indexOf(`D-${todayD}`):-1;
-  const datasets=buildDatasets(metric,allLabels,skip,todayIdx);
+  const datasets=buildDatasets(metric,allLabels,skip);
   const dlConf=buildDatalabelsConfig(todayIdx);
 
   const autoTitle=getAutoChartTitle();
@@ -1169,17 +1189,89 @@ async function sendCurrentToBot(){
   },'image/png');
 }
 
+// ── 전송 메시지 자동생성 ──────────────────────────────────────
+
+function generateBotMessage(){
+  const targetMetrics=['합자','육따기','영따기','복음방'];
+  const allLabels=[];for(let d=50;d>=1;d--)allLabels.push(`D-${d}`);
+  const active=getActive();
+
+  function sessLabel(s){const m=s.name.match(/(\d+)월/);return m?m[0]:s.name;}
+
+  // 마감 날짜: 첫 번째 deadline의 D-day + 활성 세션 시작일로 계산
+  function nowKST(){
+    const now=new Date();
+    return new Date(now.getTime()+now.getTimezoneOffset()*60000+9*3600000);
+  }
+  function fmtDate(date){
+    const dow=['일','월','화','수','목','금','토'];
+    const y=date.getFullYear();
+    const m=String(date.getMonth()+1).padStart(2,'0');
+    const d=String(date.getDate()).padStart(2,'0');
+    return`${y}.${m}.${d}(${dow[date.getDay()]})`;
+  }
+  let dateStr='';
+  const dl=deadlines.length>0?deadlines[0]:null;
+  if(dl&&active.startDate){
+    const start=new Date(active.startDate+'T00:00:00');
+    const dlDate=new Date(start);
+    dlDate.setDate(dlDate.getDate()-dl.dday);
+    dateStr=fmtDate(dlDate);
+  }else{
+    dateStr=fmtDate(nowKST());
+  }
+
+  // 최근 3개 세션만
+  const recent3=sessions.slice(-3);
+
+  const header=`🟦 ${sessLabel(active)} 개강 누적달성 그래프\n${dateStr}`;
+  const lines=[header,'','*청년개강'];
+
+  targetMetrics.forEach(metric=>{
+    const vals=recent3.map(s=>{
+      let latestVal=null;
+      for(let i=allLabels.length-1;i>=0;i--){
+        const k=allLabels[i];
+        const v=s.data[k]?s.data[k][metric]:'';
+        if(v!==''&&v!==null&&v!==undefined){latestVal=Number(v);break;}
+      }
+      return{s,val:latestVal,isActive:s.id===active.id};
+    }).filter(x=>x.val!==null);
+
+    lines.push('');
+    lines.push(`■${metric}`);
+    if(vals.length===0){lines.push('(데이터 없음)');return;}
+
+    vals.sort((a,b)=>a.val-b.val);
+    const parts=vals.map(v=>`${v.isActive?'✅':''}${sessLabel(v.s)} ${v.val}`);
+    lines.push(parts.join(' < '));
+  });
+
+  return lines.join('\n');
+}
+
 async function sendFourToBot(){
   const token=localStorage.getItem('tg-token');
   const chatId=localStorage.getItem('tg-chat-id');
   if(!token||!chatId){alert('봇 설정에서 토큰과 Chat ID를 먼저 저장해주세요.');openBotModal();return;}
-  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,600));}
+  if(currentView!=='chart'){switchView('chart');await new Promise(r=>setTimeout(r,400));}
+  document.getElementById('send-msg-area').value=generateBotMessage();
+  document.getElementById('send-msg-status').textContent='';
+  document.getElementById('send-msg-modal').classList.add('open');
+}
+
+async function confirmSendFour(){
+  const token=localStorage.getItem('tg-token');
+  const chatId=localStorage.getItem('tg-chat-id');
+  const text=document.getElementById('send-msg-area').value.trim();
+  const st=document.getElementById('send-msg-status');
   const targetMetrics=['합자','육따기','영따기','복음방'];
+  st.className='modal-status';st.textContent='이미지 준비 중…';
+
+  // 이미지 4개 생성
   const sel2=document.getElementById('metric-select2');
   const sel1=document.getElementById('metric-select');
   const originalMetric=sel2.value;
-  const toast=document.getElementById('dl-toast');
-  toast.textContent='4개 차트 준비 중…';toast.classList.add('show');
   const blobs=[];
   for(const metric of targetMetrics){
     sel2.value=metric;sel1.value=metric;
@@ -1188,23 +1280,29 @@ async function sendFourToBot(){
     const canvas=buildDownloadCanvas(metric);
     const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
     blobs.push(blob);
-    toast.textContent=`준비 중… ${metric} (${blobs.length}/${targetMetrics.length})`;
+    st.textContent=`이미지 준비 중… ${metric} (${blobs.length}/${targetMetrics.length})`;
   }
   sel2.value=originalMetric;sel1.value=originalMetric;updateMainChart();
-  toast.textContent='전송 중…';
+  st.textContent='전송 중…';
+
+  // 텍스트는 첫 번째 이미지 캡션으로 — 나머지는 캡션 없음
   const fd=new FormData();
   fd.append('chat_id',chatId);
   const mediaArr=blobs.map((blob,i)=>{
     fd.append(`photo${i}`,blob,`${targetMetrics[i]}_누적추이.png`);
-    return{type:'photo',media:`attach://photo${i}`,caption:`📊 ${targetMetrics[i]} 누적달성 | ${getActive().name} | ${new Date().toLocaleDateString('ko-KR')}`};
+    const entry={type:'photo',media:`attach://photo${i}`};
+    if(i===0&&text)entry.caption=text.slice(0,1024);
+    return entry;
   });
   fd.append('media',JSON.stringify(mediaArr));
   try{
     const res=await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`,{method:'POST',body:fd});
     const data=await res.json();
-    toast.textContent=data.ok?'✅ 4개 전송 완료!':'❌ 오류: '+data.description;
-  }catch(e){toast.textContent='❌ 전송 실패: '+e.message;}
-  setTimeout(()=>toast.classList.remove('show'),3500);
+    if(data.ok){
+      st.className='modal-status modal-success';st.textContent='✅ 전송 완료!';
+      setTimeout(()=>document.getElementById('send-msg-modal').classList.remove('open'),1200);
+    }else{st.textContent='❌ 이미지 전송 실패: '+data.description;}
+  }catch(e){st.textContent='❌ 전송 실패: '+e.message;}
 }
 
 // ── Paste import ──────────────────────────────────────────────
