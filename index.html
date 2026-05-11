@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>D-day 누적 추이 트래커</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -656,10 +657,21 @@ function navCell(e,d,m){
   }
 }
 
+// ── Supabase ──────────────────────────────────────────────────
+
+const _sb = supabase.createClient(
+  'https://bxwpgkldwnwflxfhuifz.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4d3Bna2xkd253Zmx4Zmh1aWZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0OTMyNDEsImV4cCI6MjA5NDA2OTI0MX0.2DZ2wfzBE4e3V7ox08FeqoIGFih1BStbdqa_BKKOzaA'
+);
+
 // ── Storage ───────────────────────────────────────────────────
 
+let _saveTimer;
 function saveData(){
-  try{localStorage.setItem('dday-v2',JSON.stringify({sessions,nextId,activeId}));}catch(e){}
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async ()=>{
+    await _sb.from('app_data').upsert({id:1,sessions,next_id:nextId,active_id:activeId,deadlines});
+  }, 500);
 }
 
 // ── Chart helpers ─────────────────────────────────────────────
@@ -1392,7 +1404,7 @@ function copyChartData(){
 // ── Deadlines ─────────────────────────────────────────────────
 
 function saveDeadlines(){
-  try{localStorage.setItem('dday-deadlines',JSON.stringify({deadlines,nextId:nextDeadlineId}));}catch(e){}
+  saveData();
 }
 
 const DDAYKI_METRICS=['합자','육따기','영따기'];
@@ -1484,15 +1496,6 @@ function init(){
   updateMiniChart();
 }
 
-const saved=localStorage.getItem('dday-v2');
-if(saved){
-  try{const p=JSON.parse(saved);sessions=p.sessions;nextId=p.nextId||10;activeId=p.activeId||sessions[0].id;}catch(e){}
-}
-const savedDL=localStorage.getItem('dday-deadlines');
-if(savedDL){
-  try{const p=JSON.parse(savedDL);deadlines=p.deadlines||[];nextDeadlineId=p.nextId||deadlines.length+1;}catch(e){}
-}
-
 // Populate metric selects
 METRICS.forEach(m=>{
   ['metric-select','metric-select2'].forEach(id=>{
@@ -1504,7 +1507,19 @@ METRICS.forEach(m=>{
   });
 });
 
-init();
+(async()=>{
+  try{
+    const {data}=await _sb.from('app_data').select('*').eq('id',1).single();
+    if(data&&data.sessions&&data.sessions.length){
+      sessions=data.sessions;
+      nextId=data.next_id||10;
+      activeId=data.active_id||sessions[0].id;
+      deadlines=data.deadlines||[];
+      nextDeadlineId=deadlines.length?Math.max(...deadlines.map(d=>d.id||0))+1:1;
+    }
+  }catch(e){}
+  init();
+})();
 </script>
 </body>
 </html>
