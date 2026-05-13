@@ -888,7 +888,7 @@ function updateMiniChart(){
     },
     scales:{
       x:{grid:{color:'rgba(0,0,0,0.04)',drawTicks:false},ticks:{font:{size:10},maxRotation:0,minRotation:0,autoSkip:false,callback:(_,i)=>displayLabels[i]||'',color:'#889'}},
-      y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},callback:v=>v.toLocaleString(),color:'#889'},beginAtZero:true}
+      y:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{size:10},callback:v=>v.toLocaleString(),color:'#889'},beginAtZero:true,grace:'10%'}
     }
   };
 
@@ -953,7 +953,7 @@ function updateMainChart(){
       y:{
         grid:{color:'rgba(0,0,0,0.05)',lineWidth:1},
         ticks:{font:{size:13,weight:'500'},callback:v=>v.toLocaleString(),color:'#667'},
-        beginAtZero:true
+        beginAtZero:true,grace:'10%'
       }
     }
   };
